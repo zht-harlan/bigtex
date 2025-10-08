@@ -1,6 +1,6 @@
 # BiGTex
 # Integrating Structural and Semantic Signals in Text-Attributed Graphs with BiGTex
-The article can be viewed and downloaded from(https://arxiv.org/abs/2504.12474)
+
 
 ## Install requirements in  `requirements.txt`
 
