@@ -51,8 +51,11 @@ def prepare_loaders(data, batch_size=6):
     print('type',type(train_loader))
     return train_loader, valid_loader, test_loader
 
-def train_model(model, train_loader, valid_loader, test_loader, epochs=10):
-    evaluator = Evaluator(name='ogbn-arxiv')
+def train_model(model, train_loader, valid_loader, test_loader,dataset_name, epochs=10):
+    if dataset_name=='products':
+        evaluator = Evaluator(name='ogbn-products')
+    else:
+        evaluator = Evaluator(name='ogbn-arxiv')
 
     device = next(model.parameters()).device
     criterion = nn.CrossEntropyLoss()
@@ -191,7 +194,11 @@ def main():
     #------------------------- LOAD DATASET
     if dataset_name=='products':
         data, texts=load_products_subset()
-        data, num_classes = remap_labels(data)  
+        data, num_classes = remap_labels(data) 
+    elif dataset_name=='products':
+        data, texts= load_ogb_products()
+    elif dataset_name == 'photo':
+        data, texts =load_photo()
     elif dataset_name  in ['arxiv', 'arxiv_sim']:
         data, texts=load_arxiv(dataset_name=dataset_name)
     elif dataset_name=='cora':
@@ -256,10 +263,10 @@ def main():
         total_params = sum(p.numel() for p in model.parameters())
         trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         print("model_name=",model_name)
-        print("LM=",LM)
+        print("LM=", LM)
         print(f"Total parameters: {total_params:,}")
         print(f"Trainable parameters: {trainable_params:,}")
-        train_, val_, test_= train_model(model, train_loader, valid_loader, test_loader, epochs)
+        train_, val_, test_= train_model(model, train_loader, valid_loader, test_loader,dataset_name, epochs)
         train_acc.append(train_)
         val_acc.append(val_)
         test_acc.append(test_)
@@ -283,3 +290,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
