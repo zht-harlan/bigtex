@@ -27,7 +27,7 @@ def SaveEmbeddings(model,train_loader,valid_loader,test_loader, dataset_name, mo
         for batch in train_loader:
             batch = batch.to(device)
             # فرض می‌کنیم که `batch` شامل ویژگی‌ها و ایندکس‌های گراف برای یک mini-batch است
-            _, embeddings = model(batch.x, batch.edge_index, batch.n_id, batch.x)
+            _,_, embeddings,_,_ = model(batch.x, batch.edge_index, batch.n_id, batch.x, batch.batch_size)
             # reduced_embeddings = reduction_model(embeddings)
             
             # انتقال به CPU و تبدیل به NumPy
@@ -41,7 +41,7 @@ def SaveEmbeddings(model,train_loader,valid_loader,test_loader, dataset_name, mo
         for batch in valid_loader:
             batch = batch.to(device)
             # فرض می‌کنیم که `batch` شامل ویژگی‌ها و ایندکس‌های گراف برای یک mini-batch است
-            _,embeddings = model(batch.x, batch.edge_index, batch.n_id, batch.x)
+            _,_, embeddings,_,_ = model(batch.x, batch.edge_index, batch.n_id, batch.x, batch.batch_size)
             # reduced_embeddings = reduction_model(embeddings)
             # reduced_embeddings = reduced_embeddings.cpu().numpy()
             # print("embeddings",embeddings.shape)
@@ -53,7 +53,7 @@ def SaveEmbeddings(model,train_loader,valid_loader,test_loader, dataset_name, mo
         for batch in test_loader:
             batch = batch.to(device)
             # فرض می‌کنیم که `batch` شامل ویژگی‌ها و ایندکس‌های گراف برای یک mini-batch است
-            _,embeddings = model(batch.x, batch.edge_index, batch.n_id, batch.x)
+            _,_,embeddings,_,_ = model(batch.x, batch.edge_index, batch.n_id, batch.x, batch.batch_size)
             # reduced_embeddings = reduction_model(embeddings)
             # reduced_embeddings = reduced_embeddings.cpu().numpy()
             # print("embeddings",embeddings.shape)
@@ -79,7 +79,7 @@ def SaveEmbeddings(model,train_loader,valid_loader,test_loader, dataset_name, mo
       
 
     # نام فایل برای ذخیره داده‌ها  
-    filename = 'embeddings/embeddings_'+ dataset_name+"_"+ model_name+ '.csv'  
+    filename = 'embeddings_'+ dataset_name+"_"+ model_name+ '.csv'  
     # ذخیره در CSV  
     # filename = 'embeddings_with_labels.csv'  
     with open(filename, mode='w', newline='') as file:  
