@@ -23,7 +23,7 @@
 ```
 python main.py 'arxiv' 'BiGTex'
 ```
-you can run for other dataset: 'pubmed', 'products', 'arxiv_2023'
+you can run for other dataset: 'cora', 'pubmed', 'products', 'arxiv_2023'
 or other models: 'MLP', 'GCN', 'GAT', 'SAGE'
 
 ## BiGTex embeddings
