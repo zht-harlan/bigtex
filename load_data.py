@@ -9,6 +9,8 @@ from ogb.nodeproppred import PygNodePropPredDataset
 from torch_geometric.utils import to_edge_index
 import json
 from torch_geometric.utils import degree
+import os
+
 
 
 
@@ -58,7 +60,13 @@ def load_cora():
     #     [x in data.val_id for x in range(data.num_nodes)])
     # data.test_mask = torch.tensor(
     #     [x in data.test_id for x in range(data.num_nodes)])
-    print("data=",data)
+    edge_index = data.edge_index
+    # degrees = degree(edge_index.view(-1), num_nodes=num_nodes)
+    degrees = degree(edge_index.reshape(-1), num_nodes=data.num_nodes)
+
+    avg_degree = degrees.mean().item()
+    print(f"Average node degree (undirected): {avg_degree:.4f}")
+    # print("data=",data)
     return data, texts
 
 def load_arxiv(dataset_name):
@@ -101,6 +109,85 @@ def load_arxiv(dataset_name):
 
     return data, texts
 
+
+def load_ogb_products():
+    dataset = PygNodePropPredDataset(name='ogbn-products')
+    data = dataset[0]
+    idx_splits = dataset.get_idx_split()
+    
+    data = Data(
+        n_id=torch.arange(data.num_nodes),
+        x=data.x,  # ویژگی‌های گره‌ها
+        edge_index= data.edge_index,  # یال‌ها
+        y=dataset.y,  # برچسب‌های گره‌ها
+        train_idx=idx_splits['train'],
+        valid_idx=idx_splits['valid'],
+        test_idx=idx_splits['test'],
+        )
+
+
+    data_root="datasets/products"
+    raw_text_path="datasets/products/products_text"
+    
+    if not os.path.exists(f"{data_root}/product3.csv"):
+        i = 1
+        for root, dirs, files in os.walk(os.path.join(raw_text_path, '')):
+            for file in files:
+                file_path = os.path.join(root, file)
+                print(file_path)
+                with open(file_path, 'r', encoding='utf-8-sig') as file_in:
+                    title = []
+                    for line in file_in.readlines():
+                        # print("line=",line)
+                        dic = json.loads(line)
+                        
+
+                        dic['title'] = dic['title'].strip("\"\n")
+                        title.append(dic)
+                    print("read...")
+                    print("len=",len(title))
+                    name_attribute = ["uid", "title", "content"]
+                    writercsv = pd.DataFrame(columns=name_attribute, data=title)
+                    writercsv.to_csv(os.path.join(data_root, f'product' + str(i) + '.csv'), index=False,
+                                        encoding='utf_8_sig')  # index=False不输出索引值
+                    i = i + 1
+        
+        pro1 = pd.read_csv(data_root+"/product1.csv")
+        pro2 = pd.read_csv(data_root+"/product2.csv")
+        file = pd.concat([pro1, pro2])
+        file.drop_duplicates()
+        file.to_csv(os.path.join(data_root, f'product3.csv'), index=False, sep=" ")
+    else:
+        file = pd.read_csv(data_root+"/product3.csv", sep=" ")
+
+
+
+    category_path_csv = "dataset\ogbn_products\mapping/labelidx2productcategory.csv.gz"
+    products_asin_path_csv = "dataset\ogbn_products\mapping/nodeidx2asin.csv.gz"  #
+    products_ids = pd.read_csv(products_asin_path_csv)
+    categories = pd.read_csv(category_path_csv)
+
+    products_ids.columns = ["ID", "asin"]
+    categories.columns = ["label_idx", "category"]  # 指定ID 和 category列写进去
+    file.columns = ['asin', 'title', 'content']
+    products_ids["label_idx"] = data.y
+    data1 = pd.merge(products_ids, file, how="left", on="asin")  # ID ASIN TITLE
+    data1 = pd.merge(data1, categories, how="left", on="label_idx")  # 改写是为了拼接到一起
+
+    texts = ('[sep] '+ data1['title'].fillna('') + '[sep] ' + data1['content'].fillna('')).tolist()
+    print(len(texts))
+
+    return data, texts
+
+    
+
+
+
+
+
+
+# load_ogb_products()
+#----------------------------------------------------------------------------------------------------
 def load_product():
     dataset = PygNodePropPredDataset(
     name='ogbn-products', transform=T.ToSparseTensor())
@@ -288,71 +375,55 @@ def load_photo():
     # print("data",data)
     return data, texts
 
-def load_ogb_products():
-    dataset = PygNodePropPredDataset(name='ogbn-products')
-    data = dataset[0]
-    idx_splits = dataset.get_idx_split()
-    
-    data = Data(
-        n_id=torch.arange(data.num_nodes),
-        x=data.x,  # ویژگی‌های گره‌ها
-        edge_index= data.edge_index,  # یال‌ها
-        y=dataset.y,  # برچسب‌های گره‌ها
-        train_idx=idx_splits['train'],
-        valid_idx=idx_splits['valid'],
-        test_idx=idx_splits['test'],
-        )
 
+def load_citeseer():
+    data = torch.load(f"datasets/citeseer/citeseer_random_sbert.pt", weights_only=False)
+    print("data", data)
+    # print("lanel=", data.label[0])
+    # print("y=",data.raw_texts[0])
+    # data.y = data.label
+    data.x = data.x.float() # Half into Float
+    edge_index = to_undirected(data.edge_index)
+    # edge_index, _ = add_self_loops(data.edge_index)
+    data.edge_index = edge_index
+    texts=[]
+    title=[]
+    labels = data.y.numpy() if torch.is_tensor(data.y) else data.y
+    print("Unique labels:", np.unique(labels))
+    print("Num classes:", len(np.unique(labels)))
 
-    data_root="datasets/products"
-    raw_text_path="datasets/products/products_text"
-    
-    if not os.path.exists(f"{data_root}/product3.csv"):
-        i = 1
-        for root, dirs, files in os.walk(os.path.join(raw_text_path, '')):
-            for file in files:
-                file_path = os.path.join(root, file)
-                print(file_path)
-                with open(file_path, 'r', encoding='utf-8-sig') as file_in:
-                    title = []
-                    for line in file_in.readlines():
-                        # print("line=",line)
-                        dic = json.loads(line)
-                        
-
-                        dic['title'] = dic['title'].strip("\"\n")
-                        title.append(dic)
-                    print("read...")
-                    print("len=",len(title))
-                    name_attribute = ["uid", "title", "content"]
-                    writercsv = pd.DataFrame(columns=name_attribute, data=title)
-                    writercsv.to_csv(os.path.join(data_root, f'product' + str(i) + '.csv'), index=False,
-                                        encoding='utf_8_sig')  
-                    i = i + 1
+    # print("data.raw_texts=",data.raw_texts[0])
+    for ti in data.raw_texts:
         
-        pro1 = pd.read_csv(data_root+"/product1.csv")
-        pro2 = pd.read_csv(data_root+"/product2.csv")
-        file = pd.concat([pro1, pro2])
-        file.drop_duplicates()
-        file.to_csv(os.path.join(data_root, f'product3.csv'), index=False, sep=" ")
-    else:
-        file = pd.read_csv(data_root+"/product3.csv", sep=" ")
+        t = '[sep] ' + ti 
+        texts.append(t)
+ 
+    # split data
+    data.num_nodes = len(data.y)
+    num_nodes = data.num_nodes
+    node_id = np.arange(num_nodes)
+    np.random.shuffle(node_id)
+    data = Data(
+        n_id=torch.arange(data.x.shape[0]),
+        x=data.x,  # ویژگی‌های گره‌ها
+        edge_index=data.edge_index,  # یال‌ها
+        y=data.y,  # برچسب‌های گره‌ها
+        )
+    # print("data",data)
+    data.train_idx = np.sort(node_id[:int(num_nodes * 0.6)])
+    data.valid_idx = np.sort(
+        node_id[int(num_nodes * 0.6):int(num_nodes * 0.8)])
+    data.test_idx = np.sort(node_id[int(num_nodes * 0.8):])
 
 
 
-    category_path_csv = "dataset\ogbn_products\mapping/labelidx2productcategory.csv.gz"
-    products_asin_path_csv = "dataset\ogbn_products\mapping/nodeidx2asin.csv.gz"  #
-    products_ids = pd.read_csv(products_asin_path_csv)
-    categories = pd.read_csv(category_path_csv)
-
-    products_ids.columns = ["ID", "asin"]
-    categories.columns = ["label_idx", "category"]  
-    file.columns = ['asin', 'title', 'content']
-    products_ids["label_idx"] = data.y
-    data1 = pd.merge(products_ids, file, how="left", on="asin")  # ID ASIN TITLE
-    data1 = pd.merge(data1, categories, how="left", on="label_idx")  
-
-    texts = ('[sep] '+ data1['title'].fillna('') + '[sep] ' + data1['content'].fillna('')).tolist()
-    print(len(texts))
-
+        # محاسبه میانگین درجه نودها برای گراف بدون جهت
+    edge_index = data.edge_index
+    # degrees = degree(edge_index.view(-1), num_nodes=num_nodes)
+    degrees = degree(edge_index.reshape(-1), num_nodes=num_nodes)
+    print("data",data)
+    avg_degree = degrees.mean().item()
+    print(f"Average node degree (undirected): {avg_degree:.4f}")
+    
+    # print("data",data)
     return data, texts
