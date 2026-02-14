@@ -213,33 +213,59 @@ def load_product():
     return data, texts
 
 
-def load_products_subset():
+def load_products_subset(seed=42):
 
-    data = torch.load('datasets/products/ogbn-products_subset.pt')
+    # ---------- load data ----------
+    raw_data = torch.load(
+        'datasets/products/ogbn-products_subset.pt',
+        weights_only=False
+    )
     node_desc = pd.read_csv('datasets/products/ogbn-products_subset.csv')
 
-    train_mask, val_mask, test_mask = data.train_mask.squeeze(), data.val_mask.squeeze(), data.test_mask.squeeze()
-    
+    num_nodes = raw_data.num_nodes
+
+    # ---------- build texts ----------
     texts = []
-    for i in range(data.num_nodes):
-            node_title = (node_desc.iloc[i, 2] if node_desc.iloc[i, 2] is not np.nan else "missing")
-            node_content = (node_desc.iloc[i, 3] if node_desc.iloc[i, 3] is not np.nan else "missing")
-            text = "[sep] " + node_title + " [sep] " + node_content
-            texts.append(text)
-    edge_index = data.adj_t.to_symmetric()
-    edge_index = to_edge_index(edge_index)[0]
-    data = Data(
-        n_id=torch.arange(data.num_nodes),
-        x=data.x,  # ویژگی‌های گره‌ها
-        edge_index= edge_index,  # یال‌ها
-        y=data.y,  # برچسب‌های گره‌ها
-        train_idx=torch.where(data.train_mask)[0],
-        valid_idx=torch.where(data.val_mask)[0],
-        test_idx=torch.where(data.test_mask)[0],
+    for i in range(num_nodes):
+        node_title = (
+            node_desc.iloc[i, 2]
+            if pd.notna(node_desc.iloc[i, 2]) else "missing"
         )
+        node_content = (
+            node_desc.iloc[i, 3]
+            if pd.notna(node_desc.iloc[i, 3]) else "missing"
+        )
+        text = "[sep] " + str(node_title) + " [sep] " + str(node_content)
+        texts.append(text)
+
+    # ---------- edge index ----------
+    edge_index = raw_data.adj_t.to_symmetric()
+    edge_index = to_edge_index(edge_index)[0]
+
+    # ---------- custom split 60/20/20 ----------
+    torch.manual_seed(seed)
+
+    perm = torch.randperm(num_nodes)
+
+    n_train = int(0.6 * num_nodes)
+    n_val   = int(0.2 * num_nodes)
+
+    train_idx = perm[:n_train]
+    valid_idx = perm[n_train:n_train + n_val]
+    test_idx  = perm[n_train + n_val:]
+
+    # ---------- build Data object ----------
+    data = Data(
+        n_id=torch.arange(num_nodes),
+        x=raw_data.x,
+        edge_index=edge_index,
+        y=raw_data.y,
+        train_idx=train_idx,
+        valid_idx=valid_idx,
+        test_idx=test_idx,
+    )
+
     return data, texts
-
-
 
 
 
@@ -427,3 +453,4 @@ def load_citeseer():
     
     # print("data",data)
     return data, texts
+
