@@ -67,14 +67,14 @@ class BERTWithSoftPrompt(nn.Module):
             self.tokenizer.pad_token = self.tokenizer.eos_token
             self.lm_model = GPT2Model.from_pretrained('gpt2')
         elif LM == "BERT":
-            self.tokenizer = BertTokenizer.from_pretrained("bert-base-uncased", local_files_only=True)
-            self.lm_model = BertModel.from_pretrained("bert-base-uncased", local_files_only=True)
+            self.tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+            self.lm_model = BertModel.from_pretrained("bert-base-uncased")
         elif LM == "SCIBERT":
             self.tokenizer = BertTokenizer.from_pretrained(
-                "allenai/scibert_scivocab_uncased", local_files_only=True
+                "allenai/scibert_scivocab_uncased"
             )
             self.lm_model = BertModel.from_pretrained(
-                "allenai/scibert_scivocab_uncased", local_files_only=True
+                "allenai/scibert_scivocab_uncased"
             )
         elif LM == "DeBERTA":
                 # self.text_model = DebertaV2Model.from_pretrained("microsoft/deberta-v3-base")

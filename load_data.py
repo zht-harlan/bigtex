@@ -1,456 +1,359 @@
+import json
+import os
+import urllib.request
+
 import numpy as np
-import torch
-import random
-from torch_geometric.data import Data
 import pandas as pd
-from torch_geometric.datasets import Planetoid
+import torch
 import torch_geometric.transforms as T
 from ogb.nodeproppred import PygNodePropPredDataset
-from torch_geometric.utils import to_edge_index
-import json
-from torch_geometric.utils import degree
-import os
+from torch_geometric.data import Data
+from torch_geometric.datasets import Amazon, Planetoid
+from torch_geometric.utils import degree, to_edge_index
 
 
+ARXIV_TEXT_URL = "https://snap.stanford.edu/ogb/data/misc/ogbn_arxiv/titleabs.tsv.gz"
+PUBMED_GDRIVE_FILE_ID = "1sYZX-jP6H8OkopVa9cp8-KXdEti5ki_W"
+
+
+def ensure_dir(path):
+    os.makedirs(path, exist_ok=True)
+
+
+def download_with_urllib(url, output_path):
+    ensure_dir(os.path.dirname(output_path))
+    print(f"Downloading {url} -> {output_path}")
+    urllib.request.urlretrieve(url, output_path)
+
+
+def download_from_gdrive(file_id, output_path):
+    try:
+        import gdown
+    except ImportError:
+        print("gdown is not installed; skip Google Drive download.")
+        return False
+
+    ensure_dir(os.path.dirname(output_path))
+    url = f"https://drive.google.com/uc?id={file_id}"
+    gdown.download(url=url, output=output_path, quiet=False, fuzzy=True)
+    return os.path.exists(output_path)
+
+
+def ensure_arxiv_text_file():
+    output_path = os.path.join("datasets", "arxiv", "titleabs.tsv.gz")
+    if not os.path.exists(output_path):
+        download_with_urllib(ARXIV_TEXT_URL, output_path)
+    return output_path
+
+
+def ensure_pubmed_json():
+    candidate_paths = [
+        os.path.join("datasets", "PubMed", "pubmed.json"),
+        os.path.join("datasets", "pubmed", "pubmed.json"),
+    ]
+    for path in candidate_paths:
+        if os.path.exists(path):
+            return path
+
+    output_path = candidate_paths[1]
+    success = download_from_gdrive(PUBMED_GDRIVE_FILE_ID, output_path)
+    return output_path if success else None
+
+
+def build_feature_texts(x, prefix, topk=32):
+    x_cpu = x.detach().cpu()
+    texts = []
+    for idx, row in enumerate(x_cpu):
+        row = row.flatten()
+        nonzero_idx = torch.nonzero(row, as_tuple=False).view(-1)
+        if nonzero_idx.numel() == 0:
+            top_idx = torch.topk(row.abs(), k=min(topk, row.numel())).indices.tolist()
+        else:
+            top_idx = nonzero_idx[:topk].tolist()
+        tokens = [f"feature_{i}" for i in top_idx]
+        if not tokens:
+            tokens = ["no_feature"]
+        texts.append(f"[sep] {prefix} node {idx} [sep] " + " ".join(tokens))
+    return texts
 
 
 def load_cora():
-    cora_data = torch.load('datasets/cora/cora.pt')
-    texts = [
-        f"[sep] {text.split(':', 1)[0].strip()} [sep] {text.split(':', 1)[1].strip()}"
-        if ':' in text else text
-        for text in cora_data.raw_texts
-    ]
-    #----------------- CORA
-    data_name='cora'
-    dataset = Planetoid('dataset', data_name,
-                            transform=T.NormalizeFeatures())
-    data = dataset[0]
-    
+    planetoid = Planetoid("dataset", "cora", transform=T.NormalizeFeatures())
+    base_data = planetoid[0]
+
+    local_path = os.path.join("datasets", "cora", "cora.pt")
+    if os.path.exists(local_path):
+        cora_data = torch.load(local_path, weights_only=False)
+        texts = [
+            f"[sep] {text.split(':', 1)[0].strip()} [sep] {text.split(':', 1)[1].strip()}"
+            if ":" in text
+            else f"[sep] {text}"
+            for text in cora_data.raw_texts
+        ]
+    else:
+        print("datasets/cora/cora.pt not found; using synthetic texts from node features.")
+        texts = build_feature_texts(base_data.x, "cora")
+
     data = Data(
-        n_id=torch.arange(data.x.shape[0]),
-        x=dataset.x,  # ویژگی‌های گره‌ها
-        edge_index=data.edge_index,  # یال‌ها
-        y=dataset.y,  # برچسب‌های گره‌ها
-        train_idx=data.train_mask,
-        valid_idx=data.val_mask,
-        test_idx=data.test_mask,
-        )
-    # split data
+        n_id=torch.arange(base_data.x.shape[0]),
+        x=planetoid.x,
+        edge_index=base_data.edge_index,
+        y=planetoid.y,
+    )
+
     node_id = np.arange(data.num_nodes)
     np.random.shuffle(node_id)
+    data.train_idx = np.sort(node_id[: int(data.num_nodes * 0.6)])
+    data.valid_idx = np.sort(node_id[int(data.num_nodes * 0.6) : int(data.num_nodes * 0.8)])
+    data.test_idx = np.sort(node_id[int(data.num_nodes * 0.8) :])
 
-    data.train_idx = np.sort(node_id[:int(data.num_nodes * 0.6)])
-    data.valid_idx = np.sort(
-        node_id[int(data.num_nodes * 0.6):int(data.num_nodes * 0.8)])
-    data.test_idx = np.sort(node_id[int(data.num_nodes * 0.8):])
-
-    # #  -- splid 60-20-20
-    # node_id = np.arange(data.num_nodes)
-    # np.random.shuffle(node_id)
-
-    # data.train_id = np.sort(node_id[:int(data.num_nodes * 0.6)])
-    # data.val_id = np.sort(
-    #     node_id[int(data.num_nodes * 0.6):int(data.num_nodes * 0.8)])
-    # data.test_id = np.sort(node_id[int(data.num_nodes * 0.8):])
-
-    # data.train_mask = torch.tensor(
-    #     [x in data.train_id for x in range(data.num_nodes)])
-    # data.val_mask = torch.tensor(
-    #     [x in data.val_id for x in range(data.num_nodes)])
-    # data.test_mask = torch.tensor(
-    #     [x in data.test_id for x in range(data.num_nodes)])
-    edge_index = data.edge_index
-    # degrees = degree(edge_index.view(-1), num_nodes=num_nodes)
-    degrees = degree(edge_index.reshape(-1), num_nodes=data.num_nodes)
-
-    avg_degree = degrees.mean().item()
-    print(f"Average node degree (undirected): {avg_degree:.4f}")
-    # print("data=",data)
+    degrees = degree(data.edge_index.reshape(-1), num_nodes=data.num_nodes)
+    print(f"Average node degree (undirected): {degrees.mean().item():.4f}")
     return data, texts
 
+
 def load_arxiv(dataset_name):
-    dataset = PygNodePropPredDataset(
-        name='ogbn-arxiv')
-    data = dataset[0]
-    # print("data=",data)
+    dataset = PygNodePropPredDataset(name="ogbn-arxiv")
+    base_data = dataset[0]
     idx_splits = dataset.get_idx_split()
 
-    if dataset_name=='arxiv_sim':
-            x = torch.load('datasets/arxiv_sim/x_embs.pt')
-            x=x
-    else:
-            x=data.x
-    
+    x = (
+        torch.load("datasets/arxiv_sim/x_embs.pt")
+        if dataset_name == "arxiv_sim"
+        else base_data.x
+    )
+
     data = Data(
-        n_id=torch.arange(data.num_nodes),
-        x=x,  # ویژگی‌های گره‌ها
-        edge_index= data.edge_index,  # یال‌ها
-        y=dataset.y,  # برچسب‌های گره‌ها
-        train_idx=idx_splits['train'],
-        valid_idx=idx_splits['valid'],
-        test_idx=idx_splits['test'],
-        )
+        n_id=torch.arange(base_data.num_nodes),
+        x=x,
+        edge_index=base_data.edge_index,
+        y=dataset.y,
+        train_idx=idx_splits["train"],
+        valid_idx=idx_splits["valid"],
+        test_idx=idx_splits["test"],
+    )
 
-    nodeidx2paperid = pd.read_csv(
-        'datasets/arxiv/nodeidx2paperid.csv.gz', compression='gzip')
+    nodeidx2paperid = pd.read_csv("datasets/arxiv/nodeidx2paperid.csv.gz", compression="gzip")
+    raw_text_path = ensure_arxiv_text_file()
+    raw_text = pd.read_csv(
+        raw_text_path,
+        sep="\t",
+        header=None,
+        names=["paper id", "title", "abs"],
+    )
 
-    raw_text = pd.read_csv('datasets/arxiv/titleabs.tsv.gz',
-                           sep='\t', header=None, names=['paper id', 'title', 'abs'])
-
-    nodeidx2paperid['paper id'] = nodeidx2paperid['paper id'].astype(str)
-    raw_text['paper id'] = raw_text['paper id'].astype(str)
-    df = pd.merge(nodeidx2paperid, raw_text, on='paper id')
-
-    texts = []
-    for ti, ab in zip(df['title'], df['abs']):
-        t = '[sep] ' + ti + '[sep]' + ab
-        texts.append(t)
-
+    nodeidx2paperid["paper id"] = nodeidx2paperid["paper id"].astype(str)
+    raw_text["paper id"] = raw_text["paper id"].astype(str)
+    df = pd.merge(nodeidx2paperid, raw_text, on="paper id")
+    texts = [f"[sep] {ti} [sep] {ab}" for ti, ab in zip(df["title"], df["abs"])]
     return data, texts
 
 
 def load_ogb_products():
-    dataset = PygNodePropPredDataset(name='ogbn-products')
+    dataset = PygNodePropPredDataset(name="ogbn-products")
     data = dataset[0]
     idx_splits = dataset.get_idx_split()
-    
+
     data = Data(
         n_id=torch.arange(data.num_nodes),
-        x=data.x,  # ویژگی‌های گره‌ها
-        edge_index= data.edge_index,  # یال‌ها
-        y=dataset.y,  # برچسب‌های گره‌ها
-        train_idx=idx_splits['train'],
-        valid_idx=idx_splits['valid'],
-        test_idx=idx_splits['test'],
-        )
+        x=data.x,
+        edge_index=data.edge_index,
+        y=dataset.y,
+        train_idx=idx_splits["train"],
+        valid_idx=idx_splits["valid"],
+        test_idx=idx_splits["test"],
+    )
 
+    data_root = "datasets/products"
+    raw_text_path = "datasets/products/products_text"
 
-    data_root="datasets/products"
-    raw_text_path="datasets/products/products_text"
-    
     if not os.path.exists(f"{data_root}/product3.csv"):
         i = 1
-        for root, dirs, files in os.walk(os.path.join(raw_text_path, '')):
+        for root, _, files in os.walk(os.path.join(raw_text_path, "")):
             for file in files:
                 file_path = os.path.join(root, file)
-                print(file_path)
-                with open(file_path, 'r', encoding='utf-8-sig') as file_in:
+                with open(file_path, "r", encoding="utf-8-sig") as file_in:
                     title = []
                     for line in file_in.readlines():
-                        # print("line=",line)
                         dic = json.loads(line)
-                        
-
-                        dic['title'] = dic['title'].strip("\"\n")
+                        dic["title"] = dic["title"].strip("\"\n")
                         title.append(dic)
-                    print("read...")
-                    print("len=",len(title))
-                    name_attribute = ["uid", "title", "content"]
-                    writercsv = pd.DataFrame(columns=name_attribute, data=title)
-                    writercsv.to_csv(os.path.join(data_root, f'product' + str(i) + '.csv'), index=False,
-                                        encoding='utf_8_sig')  # index=False不输出索引值
-                    i = i + 1
-        
-        pro1 = pd.read_csv(data_root+"/product1.csv")
-        pro2 = pd.read_csv(data_root+"/product2.csv")
+                    writercsv = pd.DataFrame(columns=["uid", "title", "content"], data=title)
+                    writercsv.to_csv(
+                        os.path.join(data_root, f"product{i}.csv"),
+                        index=False,
+                        encoding="utf_8_sig",
+                    )
+                    i += 1
+
+        pro1 = pd.read_csv(data_root + "/product1.csv")
+        pro2 = pd.read_csv(data_root + "/product2.csv")
         file = pd.concat([pro1, pro2])
         file.drop_duplicates()
-        file.to_csv(os.path.join(data_root, f'product3.csv'), index=False, sep=" ")
+        file.to_csv(os.path.join(data_root, "product3.csv"), index=False, sep=" ")
     else:
-        file = pd.read_csv(data_root+"/product3.csv", sep=" ")
+        file = pd.read_csv(data_root + "/product3.csv", sep=" ")
 
-
-
-    category_path_csv = "dataset\ogbn_products\mapping/labelidx2productcategory.csv.gz"
-    products_asin_path_csv = "dataset\ogbn_products\mapping/nodeidx2asin.csv.gz"  #
+    category_path_csv = r"dataset\ogbn_products\mapping/labelidx2productcategory.csv.gz"
+    products_asin_path_csv = r"dataset\ogbn_products\mapping/nodeidx2asin.csv.gz"
     products_ids = pd.read_csv(products_asin_path_csv)
     categories = pd.read_csv(category_path_csv)
 
     products_ids.columns = ["ID", "asin"]
-    categories.columns = ["label_idx", "category"]  # 指定ID 和 category列写进去
-    file.columns = ['asin', 'title', 'content']
+    categories.columns = ["label_idx", "category"]
+    file.columns = ["asin", "title", "content"]
     products_ids["label_idx"] = data.y
-    data1 = pd.merge(products_ids, file, how="left", on="asin")  # ID ASIN TITLE
-    data1 = pd.merge(data1, categories, how="left", on="label_idx")  # 改写是为了拼接到一起
-
-    texts = ('[sep] '+ data1['title'].fillna('') + '[sep] ' + data1['content'].fillna('')).tolist()
-    print(len(texts))
-
-    return data, texts
-
-    
-
-
-
-
-
-
-# load_ogb_products()
-#----------------------------------------------------------------------------------------------------
-def load_product():
-    dataset = PygNodePropPredDataset(
-    name='ogbn-products', transform=T.ToSparseTensor())
-    data = dataset[0]
-    
-    idx_splits = dataset.get_idx_split()
-
-    data = Data(
-        n_id=torch.arange(data.num_nodes),
-        x=data.x,  # ویژگی‌های گره‌ها
-        edge_index= data.edge_index,  # یال‌ها
-        y=dataset.y,  # برچسب‌های گره‌ها
-        train_idx=idx_splits['train'],
-        valid_idx=idx_splits['valid'],
-        test_idx=idx_splits['test'],
-        )
-    print("data=",data)
-    # data = torch.load('dataset/ogbn_products/ogbn-products_subset.pt')
-    text = pd.read_csv('datasets/products/ogbn-products_subset.csv')
-    texts = [f'[sep] {ti}. [sep] {cont}'for ti,
-            cont in zip(text['title'], text['content'])]
-    print("text=",texts[0])
+    data1 = pd.merge(products_ids, file, how="left", on="asin")
+    data1 = pd.merge(data1, categories, how="left", on="label_idx")
+    texts = ("[sep] " + data1["title"].fillna("") + "[sep] " + data1["content"].fillna("")).tolist()
     return data, texts
 
 
 def load_products_subset(seed=42):
-
-    # ---------- load data ----------
-    raw_data = torch.load(
-        'datasets/products/ogbn-products_subset.pt',
-        weights_only=False
-    )
-    node_desc = pd.read_csv('datasets/products/ogbn-products_subset.csv')
-
+    raw_data = torch.load("datasets/products/ogbn-products_subset.pt", weights_only=False)
+    node_desc = pd.read_csv("datasets/products/ogbn-products_subset.csv")
     num_nodes = raw_data.num_nodes
 
-    # ---------- build texts ----------
     texts = []
     for i in range(num_nodes):
-        node_title = (
-            node_desc.iloc[i, 2]
-            if pd.notna(node_desc.iloc[i, 2]) else "missing"
-        )
-        node_content = (
-            node_desc.iloc[i, 3]
-            if pd.notna(node_desc.iloc[i, 3]) else "missing"
-        )
-        text = "[sep] " + str(node_title) + " [sep] " + str(node_content)
-        texts.append(text)
+        node_title = node_desc.iloc[i, 2] if pd.notna(node_desc.iloc[i, 2]) else "missing"
+        node_content = node_desc.iloc[i, 3] if pd.notna(node_desc.iloc[i, 3]) else "missing"
+        texts.append("[sep] " + str(node_title) + " [sep] " + str(node_content))
 
-    # ---------- edge index ----------
     edge_index = raw_data.adj_t.to_symmetric()
     edge_index = to_edge_index(edge_index)[0]
 
-    # ---------- custom split 60/20/20 ----------
     torch.manual_seed(seed)
-
     perm = torch.randperm(num_nodes)
-
     n_train = int(0.6 * num_nodes)
-    n_val   = int(0.2 * num_nodes)
+    n_val = int(0.2 * num_nodes)
 
-    train_idx = perm[:n_train]
-    valid_idx = perm[n_train:n_train + n_val]
-    test_idx  = perm[n_train + n_val:]
-
-    # ---------- build Data object ----------
     data = Data(
         n_id=torch.arange(num_nodes),
         x=raw_data.x,
         edge_index=edge_index,
         y=raw_data.y,
-        train_idx=train_idx,
-        valid_idx=valid_idx,
-        test_idx=test_idx,
+        train_idx=perm[:n_train],
+        valid_idx=perm[n_train : n_train + n_val],
+        test_idx=perm[n_train + n_val :],
     )
-
     return data, texts
 
 
-
-
 def load_pubmed():
-    
-    dataset = Planetoid('dataset', 'PubMed', transform=T.NormalizeFeatures())
-    data = dataset[0]
-    print("data",data)
-
+    planetoid = Planetoid("dataset", "PubMed", transform=T.NormalizeFeatures())
+    base_data = planetoid[0]
     data = Data(
-        n_id=torch.arange(data.x.shape[0]),
-        x=dataset.x,  # ویژگی‌های گره‌ها
-        edge_index=data.edge_index,  # یال‌ها
-        y=dataset.y,  # برچسب‌های گره‌ها
-        # train_idx=torch.where(data.train_mask)[0],
-        # valid_idx=torch.where(data.val_mask)[0],
-        # test_idx=torch.where(data.test_mask)[0],
-        )
-    print("data",data)
-    # split data
+        n_id=torch.arange(base_data.x.shape[0]),
+        x=planetoid.x,
+        edge_index=base_data.edge_index,
+        y=planetoid.y,
+    )
+
     node_id = np.arange(data.num_nodes)
     np.random.shuffle(node_id)
+    data.train_idx = np.sort(node_id[: int(data.num_nodes * 0.6)])
+    data.valid_idx = np.sort(node_id[int(data.num_nodes * 0.6) : int(data.num_nodes * 0.8)])
+    data.test_idx = np.sort(node_id[int(data.num_nodes * 0.8) :])
 
-    data.train_idx = np.sort(node_id[:int(data.num_nodes * 0.6)])
-    data.valid_idx = np.sort(
-        node_id[int(data.num_nodes * 0.6):int(data.num_nodes * 0.8)])
-    data.test_idx = np.sort(node_id[int(data.num_nodes * 0.8):])
-
-    f = open('datasets/PubMed/pubmed.json')
-    pubmed = json.load(f)
-    df_pubmed = pd.DataFrame.from_dict(pubmed)
-
-    AB = df_pubmed['AB'].fillna("")
-    TI = df_pubmed['TI'].fillna("")
-    texts = []
-    for ti, ab in zip(TI, AB):
-        t = '[sep] ' + ti + '[sep] ' + ab
-        texts.append(t)
-    print("text",texts[0])
-
-
+    pubmed_json_path = ensure_pubmed_json()
+    if pubmed_json_path and os.path.exists(pubmed_json_path):
+        with open(pubmed_json_path, "r", encoding="utf-8") as f:
+            pubmed = json.load(f)
+        df_pubmed = pd.DataFrame.from_dict(pubmed)
+        ab = df_pubmed["AB"].fillna("")
+        ti = df_pubmed["TI"].fillna("")
+        texts = [f"[sep] {title} [sep] {abstract}" for title, abstract in zip(ti, ab)]
+    else:
+        print("pubmed.json not available; using synthetic texts from node features.")
+        texts = build_feature_texts(base_data.x, "pubmed")
 
     return data, texts
 
 
 def load_arxiv_2023():
-    data = torch.load('datasets/arxiv_2023/graph.pt')
-    print("data",data)
-    # split data
+    data = torch.load("datasets/arxiv_2023/graph.pt")
     data.num_nodes = len(data.y)
     num_nodes = data.num_nodes
     node_id = np.arange(num_nodes)
     np.random.shuffle(node_id)
     data = Data(
         n_id=torch.arange(data.x.shape[0]),
-        x=data.x,  # ویژگی‌های گره‌ها
-        edge_index=data.edge_index,  # یال‌ها
-        y=data.y,  # برچسب‌های گره‌ها
-        # train_idx=data.train_id,
-        # valid_idx=data.val_id,
-        # test_idx=data.test_id,
-        )
-    print("data",data)
-    data.train_idx = np.sort(node_id[:int(num_nodes * 0.6)])
-    data.valid_idx = np.sort(
-        node_id[int(num_nodes * 0.6):int(num_nodes * 0.8)])
-    data.test_idx = np.sort(node_id[int(num_nodes * 0.8):])
+        x=data.x,
+        edge_index=data.edge_index,
+        y=data.y,
+    )
+    data.train_idx = np.sort(node_id[: int(num_nodes * 0.6)])
+    data.valid_idx = np.sort(node_id[int(num_nodes * 0.6) : int(num_nodes * 0.8)])
+    data.test_idx = np.sort(node_id[int(num_nodes * 0.8) :])
 
+    degrees = degree(data.edge_index.reshape(-1), num_nodes=num_nodes)
+    print(f"Average node degree (undirected): {degrees.mean().item():.4f}")
 
-
-        # محاسبه میانگین درجه نودها برای گراف بدون جهت
-    edge_index = data.edge_index
-    # degrees = degree(edge_index.view(-1), num_nodes=num_nodes)
-    degrees = degree(edge_index.reshape(-1), num_nodes=num_nodes)
-
-    avg_degree = degrees.mean().item()
-    print(f"Average node degree (undirected): {avg_degree:.4f}")
-
-    # data.train_mask = torch.tensor(
-    #     [x in data.train_id for x in range(num_nodes)])
-    # data.val_mask = torch.tensor(
-    #     [x in data.val_id for x in range(num_nodes)])
-    # data.test_mask = torch.tensor(
-    #     [x in data.test_id for x in range(num_nodes)])
-
-    df = pd.read_csv('datasets/arxiv_2023/paper_info.csv')
-    texts = []
-    for ti, ab in zip(df['title'], df['abstract']):
-        texts.append(f'[sep] {ti}[sep] {ab}')
+    df = pd.read_csv("datasets/arxiv_2023/paper_info.csv")
+    texts = [f"[sep] {ti} [sep] {ab}" for ti, ab in zip(df["title"], df["abstract"])]
     return data, texts
-#--------------------------photo
-from torch_geometric.utils import add_self_loops, to_undirected
+
+
 def load_photo():
-    data = torch.load(f"datasets/photo/photo.pt")
-    data.y = data.label
-    data.x = data.x.float() # Half into Float
-    edge_index = to_undirected(data.edge_index)
-    # edge_index, _ = add_self_loops(data.edge_index)
-    data.edge_index = edge_index
-    texts=[]
-    for ti in data.raw_texts:
-        t = '[sep] ' + ti 
-        texts.append(t)
- 
-    # split data
+    local_path = os.path.join("datasets", "photo", "photo.pt")
+    if os.path.exists(local_path):
+        data = torch.load(local_path, weights_only=False)
+        data.y = data.label
+        data.x = data.x.float()
+        texts = [f"[sep] {ti}" for ti in data.raw_texts]
+        edge_index = data.edge_index
+    else:
+        print("datasets/photo/photo.pt not found; downloading official PyG Amazon Photo and using synthetic texts.")
+        dataset = Amazon(root="dataset", name="Photo", transform=T.NormalizeFeatures())
+        pyg_data = dataset[0]
+        data = Data(
+            n_id=torch.arange(pyg_data.x.shape[0]),
+            x=pyg_data.x.float(),
+            edge_index=pyg_data.edge_index,
+            y=pyg_data.y,
+        )
+        texts = build_feature_texts(data.x, "amazon_photo")
+        edge_index = data.edge_index
+
     data.num_nodes = len(data.y)
     num_nodes = data.num_nodes
     node_id = np.arange(num_nodes)
     np.random.shuffle(node_id)
     data = Data(
         n_id=torch.arange(data.x.shape[0]),
-        x=data.x,  # ویژگی‌های گره‌ها
-        edge_index=data.edge_index,  # یال‌ها
-        y=data.y,  # برچسب‌های گره‌ها
-        )
-    # print("data",data)
-    data.train_idx = np.sort(node_id[:int(num_nodes * 0.6)])
-    data.valid_idx = np.sort(
-        node_id[int(num_nodes * 0.6):int(num_nodes * 0.8)])
-    data.test_idx = np.sort(node_id[int(num_nodes * 0.8):])
+        x=data.x,
+        edge_index=edge_index,
+        y=data.y,
+    )
+    data.train_idx = np.sort(node_id[: int(num_nodes * 0.6)])
+    data.valid_idx = np.sort(node_id[int(num_nodes * 0.6) : int(num_nodes * 0.8)])
+    data.test_idx = np.sort(node_id[int(num_nodes * 0.8) :])
 
-
-
-        # محاسبه میانگین درجه نودها برای گراف بدون جهت
-    edge_index = data.edge_index
-    # degrees = degree(edge_index.view(-1), num_nodes=num_nodes)
-    degrees = degree(edge_index.reshape(-1), num_nodes=num_nodes)
-
-    avg_degree = degrees.mean().item()
-    print(f"Average node degree (undirected): {avg_degree:.4f}")
-    
-    # print("data",data)
+    degrees = degree(data.edge_index.reshape(-1), num_nodes=num_nodes)
+    print(f"Average node degree (undirected): {degrees.mean().item():.4f}")
     return data, texts
 
 
 def load_citeseer():
-    data = torch.load(f"datasets/citeseer/citeseer_random_sbert.pt", weights_only=False)
-    print("data", data)
-    # print("lanel=", data.label[0])
-    # print("y=",data.raw_texts[0])
-    # data.y = data.label
-    data.x = data.x.float() # Half into Float
-    edge_index = to_undirected(data.edge_index)
-    # edge_index, _ = add_self_loops(data.edge_index)
-    data.edge_index = edge_index
-    texts=[]
-    title=[]
-    labels = data.y.numpy() if torch.is_tensor(data.y) else data.y
-    print("Unique labels:", np.unique(labels))
-    print("Num classes:", len(np.unique(labels)))
+    data = torch.load("datasets/citeseer/citeseer_random_sbert.pt", weights_only=False)
+    data.x = data.x.float()
+    texts = [f"[sep] {ti}" for ti in data.raw_texts]
 
-    # print("data.raw_texts=",data.raw_texts[0])
-    for ti in data.raw_texts:
-        
-        t = '[sep] ' + ti 
-        texts.append(t)
- 
-    # split data
     data.num_nodes = len(data.y)
     num_nodes = data.num_nodes
     node_id = np.arange(num_nodes)
     np.random.shuffle(node_id)
     data = Data(
         n_id=torch.arange(data.x.shape[0]),
-        x=data.x,  # ویژگی‌های گره‌ها
-        edge_index=data.edge_index,  # یال‌ها
-        y=data.y,  # برچسب‌های گره‌ها
-        )
-    # print("data",data)
-    data.train_idx = np.sort(node_id[:int(num_nodes * 0.6)])
-    data.valid_idx = np.sort(
-        node_id[int(num_nodes * 0.6):int(num_nodes * 0.8)])
-    data.test_idx = np.sort(node_id[int(num_nodes * 0.8):])
+        x=data.x,
+        edge_index=data.edge_index,
+        y=data.y,
+    )
+    data.train_idx = np.sort(node_id[: int(num_nodes * 0.6)])
+    data.valid_idx = np.sort(node_id[int(num_nodes * 0.6) : int(num_nodes * 0.8)])
+    data.test_idx = np.sort(node_id[int(num_nodes * 0.8) :])
 
-
-
-        # محاسبه میانگین درجه نودها برای گراف بدون جهت
-    edge_index = data.edge_index
-    # degrees = degree(edge_index.view(-1), num_nodes=num_nodes)
-    degrees = degree(edge_index.reshape(-1), num_nodes=num_nodes)
-    print("data",data)
-    avg_degree = degrees.mean().item()
-    print(f"Average node degree (undirected): {avg_degree:.4f}")
-    
-    # print("data",data)
+    degrees = degree(data.edge_index.reshape(-1), num_nodes=num_nodes)
+    print(f"Average node degree (undirected): {degrees.mean().item():.4f}")
     return data, texts
-

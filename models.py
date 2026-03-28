@@ -67,10 +67,10 @@ class AdaptiveGraphTextModel(nn.Module):
 
             elif LM == "SCIBERT":
                 self.tokenizer = BertTokenizer.from_pretrained(
-                    "allenai/scibert_scivocab_uncased", local_files_only=True
+                    "allenai/scibert_scivocab_uncased"
                 )
-                self.lm_model = BertModel.from_pretrained(
-                    "allenai/scibert_scivocab_uncased", local_files_only=True
+                self.text_model = BertModel.from_pretrained(
+                    "allenai/scibert_scivocab_uncased"
                 )
 
             
