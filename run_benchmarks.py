@@ -6,12 +6,26 @@ import sys
 import pandas as pd
 
 
+DATASET_ALIASES = {
+    "ogbn-arxiv": "arxiv",
+    "ogbn_arxiv": "arxiv",
+    "amazon-photo": "photo",
+    "amazon_photo": "photo",
+    "amazonphoto": "photo",
+}
+
+
+def normalize_dataset_name(dataset_name):
+    lowered = dataset_name.lower()
+    return DATASET_ALIASES.get(lowered, lowered)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Run BiGTex benchmarks on multiple datasets")
     parser.add_argument(
         "--datasets",
         nargs="+",
-        default=["arxiv", "cora", "pubmed", "photo"],
+        default=["ogbn-arxiv", "cora", "pubmed", "amazon-photo"],
         help="datasets to run",
     )
     parser.add_argument("--model_name", default="BiGTex", help="model name passed to main.py")
@@ -30,6 +44,7 @@ def main():
     parser.add_argument("--language_model_name", default="SCIBERT", help="language model")
     parser.add_argument("--mode", default="MLP", help="fusion mode")
     parser.add_argument("--GNN", default="sage", help="gnn backbone")
+    parser.add_argument("--seed_base", default=42, type=int, help="base random seed")
     parser.add_argument("--run_cs", action="store_true", help="run Correct&Smooth")
     parser.add_argument("--save_embeddings", action="store_true", help="save embeddings")
     args = parser.parse_args()
@@ -38,13 +53,14 @@ def main():
     summary_frames = []
 
     for dataset in args.datasets:
-        dataset_dir = os.path.join(args.results_root, dataset)
+        normalized_dataset = normalize_dataset_name(dataset)
+        dataset_dir = os.path.join(args.results_root, normalized_dataset)
         os.makedirs(dataset_dir, exist_ok=True)
 
         cmd = [
             sys.executable,
             "main.py",
-            dataset,
+            normalized_dataset,
             args.model_name,
             "--num_iterate",
             str(args.num_iterate),
@@ -62,6 +78,8 @@ def main():
             args.mode,
             "--GNN",
             args.GNN,
+            "--seed_base",
+            str(args.seed_base),
             "--results_dir",
             dataset_dir,
         ]
@@ -70,10 +88,10 @@ def main():
         if args.save_embeddings:
             cmd.append("--save_embeddings")
 
-        print(f"Running dataset: {dataset}")
+        print(f"Running dataset: {dataset} -> {normalized_dataset}")
         subprocess.run(cmd, check=True)
 
-        summary_path = os.path.join(dataset_dir, f"{dataset}_summary.csv")
+        summary_path = os.path.join(dataset_dir, f"{normalized_dataset}_summary.csv")
         summary_frames.append(pd.read_csv(summary_path))
 
     merged_summary = pd.concat(summary_frames, ignore_index=True)

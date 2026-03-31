@@ -26,6 +26,17 @@ python main.py 'arxiv' 'BiGTex'
 you can run for other dataset: 'cora', 'pubmed', 'products', 'arxiv_2023'
 or other models: 'MLP', 'GCN', 'GAT', 'SAGE'
 
+## Batch benchmark on server
+
+Run the four requested datasets for 5 runs each and export CSV files:
+
+```bash
+bash run_server_benchmarks.sh <your_conda_env_name>
+```
+
+This writes per-dataset CSV files under `benchmark_results/<dataset>/` and a merged summary to
+`benchmark_results/benchmark_summary.csv`.
+
 ## BiGTex embeddings
 You can download the generated embeddings by BiGTex [here ](https://drive.google.com/file/d/1RKJEHeN_lhO7drEd4KlofAqiTqmzSWEE/view?usp=drive_link).
 unzip and move them to `embeddings`, so you can run more experiments like link prediction or clusstering using them.

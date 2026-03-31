@@ -22,10 +22,23 @@ from load_data import *
 from models import *
 
 
+DATASET_ALIASES = {
+    "ogbn-arxiv": "arxiv",
+    "ogbn_arxiv": "arxiv",
+    "amazon-photo": "photo",
+    "amazon_photo": "photo",
+    "amazonphoto": "photo",
+}
+
+
 def str2bool(value):
     if isinstance(value, bool):
         return value
     return str(value).lower() in {"true", "1", "yes", "y"}
+
+
+def normalize_dataset_name(dataset_name):
+    return DATASET_ALIASES.get(dataset_name.lower(), dataset_name.lower())
 
 
 def set_seed(seed):
@@ -438,7 +451,9 @@ def main():
     parser.add_argument("--results_dir", default="results", help="directory for csv outputs")
     parser.add_argument("--save_embeddings", action="store_true", help="save embeddings csv")
     parser.add_argument("--run_cs", action="store_true", help="run Correct&Smooth")
+    parser.add_argument("--seed_base", default=42, type=int, help="base random seed")
     args = parser.parse_args()
+    args.dataset_name = normalize_dataset_name(args.dataset_name)
 
     start_time = time.time()
     os.makedirs(args.results_dir, exist_ok=True)
@@ -446,6 +461,8 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
+    # Seed before dataset loading so random splits are reproducible.
+    set_seed(args.seed_base)
     data, texts = load_dataset(args.dataset_name)
     data = data.to(device)
     num_classes = len(torch.unique(data.y))
@@ -482,7 +499,7 @@ def main():
     final_model = None
 
     for i in range(args.num_iterate):
-        current_seed = 42 + i
+        current_seed = args.seed_base + i
         set_seed(current_seed)
         print(f"\nITERATION {i + 1}/{args.num_iterate}")
         print("=" * 50)
