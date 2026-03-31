@@ -2,7 +2,11 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
+<<<<<<< HEAD
       <module fileurl="file://$PROJECT_DIR$/.idea/bigtex.iml" filepath="$PROJECT_DIR$/.idea/bigtex.iml" />
+=======
+      <module fileurl="file://$PROJECT_DIR$/.idea/BiGTex.iml" filepath="$PROJECT_DIR$/.idea/BiGTex.iml" />
+>>>>>>> 6fb937ef355477326e233aa64b174524d2203a4e
     </modules>
   </component>
 </project>
