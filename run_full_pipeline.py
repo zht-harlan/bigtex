@@ -233,15 +233,15 @@ def main():
 
     parser.add_argument(
         "--encoder_name",
-        default="scibert",
+        default="sentence-transformers/bert-base-nli-mean-tokens",
         help="stage-2 frozen text encoder backbone",
     )
-    parser.add_argument("--pooling", default="cls", choices=["cls", "mean"], help="embedding pooling")
+    parser.add_argument("--pooling", default="mean", choices=["cls", "mean"], help="embedding pooling")
     parser.add_argument(
         "--text_batch_size", default=32, type=int, help="offline text encoding batch size"
     )
     parser.add_argument(
-        "--text_max_length", default=256, type=int, help="offline text encoding max length"
+        "--text_max_length", default=128, type=int, help="offline text encoding max length"
     )
     parser.add_argument(
         "--normalize_embeddings", action="store_true", help="l2 normalize offline embeddings"
@@ -254,7 +254,7 @@ def main():
     )
     parser.add_argument("--graph_dropout", default=0.2, type=float, help="graph dropout")
     parser.add_argument("--graph_batch_size", default=1024, type=int, help="stage-3/4 graph batch size")
-    parser.add_argument("--fusion_batch_size", default=64, type=int, help="stage-5 batch size")
+    parser.add_argument("--fusion_batch_size", default=32, type=int, help="stage-5 batch size")
     parser.add_argument("--weight_decay", default=5e-4, type=float, help="weight decay")
     parser.add_argument("--num_runs", default=1, type=int, help="repeated runs per stage")
     parser.add_argument("--seed_base", default=42, type=int, help="base random seed")
@@ -291,19 +291,19 @@ def main():
     )
 
     parser.add_argument("--stage5_epochs", default=10, type=int, help="stage-5 epochs")
-    parser.add_argument("--stage5_lr", default=2e-4, type=float, help="stage-5 learning rate")
+    parser.add_argument("--stage5_lr", default=1e-4, type=float, help="stage-5 learning rate")
     parser.add_argument(
         "--fusion_backbone",
-        default="scibert",
+        default="sentence-transformers/bert-base-nli-mean-tokens",
         help="stage-5 PLM backbone for cross-modal fusion",
     )
     parser.add_argument(
-        "--fusion_max_text_length", default=256, type=int, help="stage-5 max refined text length"
+        "--fusion_max_text_length", default=128, type=int, help="stage-5 max refined text length"
     )
     parser.add_argument("--disable_lora", action="store_true", help="disable LoRA in stage 5")
-    parser.add_argument("--lora_r", default=8, type=int, help="LoRA rank")
+    parser.add_argument("--lora_r", default=16, type=int, help="LoRA rank")
     parser.add_argument("--lora_alpha", default=32, type=int, help="LoRA alpha")
-    parser.add_argument("--lora_dropout", default=0.1, type=float, help="LoRA dropout")
+    parser.add_argument("--lora_dropout", default=0.05, type=float, help="LoRA dropout")
     parser.add_argument(
         "--freeze_plm_embeddings",
         action="store_true",
