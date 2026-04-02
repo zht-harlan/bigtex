@@ -94,13 +94,14 @@ def train_model(
     epochs=10,
     mode="AE",
     num_classes=7,
+    learning_rate=2e-4,
 ):
     evaluator = Evaluator(
         name="ogbn-products" if dataset_name == "products" else "ogbn-arxiv"
     )
     device = next(model.parameters()).device
     criterion = nn.BCEWithLogitsLoss()
-    optimizer = optim.Adam(model.parameters(), lr=1e-4, weight_decay=5e-4)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=5e-4)
     scheduler = ReduceLROnPlateau(optimizer, mode="max", factor=0.5, patience=2)
 
     best_val_acc = float("-inf")
@@ -437,7 +438,7 @@ def main():
     parser.add_argument(
         "--language_model_name",
         default="SCIBERT",
-        help="BERT, GPT, SCIBERT, DeBERTA",
+        help="BERT, GPT, SCIBERT, SENTENCE_BERT, DeBERTA",
     )
     parser.add_argument("--soft_prompting", default="True", help="True or False")
     parser.add_argument("--Lora", default="True", help="True or False")
@@ -452,6 +453,10 @@ def main():
     parser.add_argument("--save_embeddings", action="store_true", help="save embeddings csv")
     parser.add_argument("--run_cs", action="store_true", help="run Correct&Smooth")
     parser.add_argument("--seed_base", default=42, type=int, help="base random seed")
+    parser.add_argument("--learning_rate", default=2e-4, type=float, help="main training lr")
+    parser.add_argument(
+        "--finetune_learning_rate", default=3e-4, type=float, help="PLM finetune lr"
+    )
     args = parser.parse_args()
     args.dataset_name = normalize_dataset_name(args.dataset_name)
 
@@ -484,6 +489,7 @@ def main():
             model_save_dir="finetuned_models",
             epochs=args.finetune_epochs,
             batch_size=args.finetune_batch_size,
+            learning_rate=args.finetune_learning_rate,
             device=device,
         )
         for param in pretrained_lm_model.parameters():
@@ -539,6 +545,7 @@ def main():
             epochs=args.epochs,
             mode=args.mode,
             num_classes=num_classes,
+            learning_rate=args.learning_rate,
         )
         run_metrics.update(
             {

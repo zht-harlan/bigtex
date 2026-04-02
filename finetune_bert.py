@@ -76,6 +76,13 @@ class BERTWithSoftPrompt(nn.Module):
             self.lm_model = BertModel.from_pretrained(
                 "allenai/scibert_scivocab_uncased"
             )
+        elif LM == "SENTENCE_BERT":
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                "sentence-transformers/bert-base-nli-mean-tokens"
+            )
+            self.lm_model = AutoModel.from_pretrained(
+                "sentence-transformers/bert-base-nli-mean-tokens"
+            )
         elif LM == "DeBERTA":
                 # self.text_model = DebertaV2Model.from_pretrained("microsoft/deberta-v3-base")
                 # self.tokenizer = DebertaV2Tokenizer.from_pretrained("microsoft/deberta-v3-base")
@@ -106,7 +113,7 @@ class BERTWithSoftPrompt(nn.Module):
         #         lora_dropout=0.1,
         #         bias="none"
         #     )
-        if  LM in ["BERT", "SCIBERT"]:
+        if  LM in ["BERT", "SCIBERT", "SENTENCE_BERT"]:
             target_modules = ["attention.self.query", "attention.self.key", "attention.self.value"]
         elif  LM == "DeBERTA":
             target_modules = ["query_proj", "key_proj", "value_proj"]
@@ -176,7 +183,7 @@ def finetune_bert_with_soft_prompt(
     model_save_dir='finetuned_models',
     epochs=5,
     batch_size=32,
-    learning_rate=2e-4,
+    learning_rate=3e-4,
     device='cuda' if torch.cuda.is_available() else 'cpu'
 ):
    
@@ -268,14 +275,14 @@ def finetune_bert_with_soft_prompt(
         features=train_features,
         labels=train_labels,
         tokenizer=model.tokenizer,
-        max_length=128 if LM in ["BERT", "DeBERTA", "SCIBERT"] else 30
+        max_length=128 if LM in ["BERT", "DeBERTA", "SCIBERT", "SENTENCE_BERT"] else 30
     )
     val_dataset = NodeClassificationDataset(
         texts=val_texts,
         features=val_features,
         labels=val_labels,
         tokenizer=model.tokenizer,
-        max_length=128 if LM in ["BERT", "DeBERTA", "SCIBERT"] else 30
+        max_length=128 if LM in ["BERT", "DeBERTA", "SCIBERT", "SENTENCE_BERT"] else 30
     )
 
     test_dataset = NodeClassificationDataset(
@@ -283,7 +290,7 @@ def finetune_bert_with_soft_prompt(
         features=test_features,
         labels=test_labels,
         tokenizer=model.tokenizer,
-        max_length=128 if LM in ["BERT", "DeBERTA", "SCIBERT"] else 30
+        max_length=128 if LM in ["BERT", "DeBERTA", "SCIBERT", "SENTENCE_BERT"] else 30
     )
 
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)

@@ -72,6 +72,13 @@ class AdaptiveGraphTextModel(nn.Module):
                 self.text_model = BertModel.from_pretrained(
                     "allenai/scibert_scivocab_uncased"
                 )
+            elif LM == "SENTENCE_BERT":
+                self.tokenizer = AutoTokenizer.from_pretrained(
+                    "sentence-transformers/bert-base-nli-mean-tokens"
+                )
+                self.text_model = AutoModel.from_pretrained(
+                    "sentence-transformers/bert-base-nli-mean-tokens"
+                )
 
             
             
@@ -79,7 +86,7 @@ class AdaptiveGraphTextModel(nn.Module):
                 
             for param in self.text_model.parameters():
                 param.requires_grad = False
-            if Lora and LM in ["BERT", "SCIBERT"]:
+            if Lora and LM in ["BERT", "SCIBERT", "SENTENCE_BERT"]:
                 target_modules = ["attention.self.query", "attention.self.key", "attention.self.value"]
             elif Lora and LM == "DeBERTA":
                 target_modules = ["query_proj", "key_proj", "value_proj"]
@@ -254,7 +261,7 @@ class AdaptiveGraphTextModel(nn.Module):
         seed_n_ids = n_id[:batch_size].cpu().numpy()
         seed_texts = [self.texts[i] for i in seed_n_ids]
         
-        if self.LM in ["BERT", "DeBERTA", "SCIBERT"]:
+        if self.LM in ["BERT", "DeBERTA", "SCIBERT", "SENTENCE_BERT"]:
             tokens = self.tokenizer(seed_texts, padding=True, truncation=True, 
                                 max_length=128, return_tensors='pt')
         elif self.LM == "GPT":
