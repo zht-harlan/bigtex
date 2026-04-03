@@ -80,10 +80,6 @@ def build_joint_training_cmd(args, dataset_name):
         str(args.codebook_size),
         "--num_quantizers",
         str(args.num_quantizers),
-        "--quantization_weight",
-        str(args.quantization_weight),
-        "--commitment_weight",
-        str(args.commitment_weight),
         "--backbone_name",
         args.backbone_name,
         "--max_text_length",
@@ -134,12 +130,12 @@ def main():
     parser.add_argument("--api_key", default="", help="generic API key")
 
     parser.add_argument("--backbone_name", default="scibert", help="unified PLM backbone")
-    parser.add_argument("--pooling", default="mean", choices=["cls", "mean"], help="embedding pooling")
+    parser.add_argument("--pooling", default="cls", choices=["cls", "mean"], help="embedding pooling")
     parser.add_argument(
         "--text_batch_size", default=32, type=int, help="offline text encoding batch size"
     )
     parser.add_argument(
-        "--text_max_length", default=128, type=int, help="offline text encoding max length"
+        "--text_max_length", default=256, type=int, help="offline text encoding max length"
     )
     parser.add_argument(
         "--normalize_embeddings", action="store_true", help="l2 normalize offline embeddings"
@@ -155,17 +151,16 @@ def main():
     parser.add_argument("--weight_decay", default=5e-4, type=float, help="weight decay")
     parser.add_argument("--num_runs", default=1, type=int, help="repeated joint runs")
     parser.add_argument("--seed_base", default=42, type=int, help="base random seed")
-    parser.add_argument("--joint_epochs", default=10, type=int, help="joint training epochs")
+    parser.add_argument("--joint_epochs", default=20, type=int, help="joint training epochs")
     parser.add_argument("--joint_lr", default=2e-4, type=float, help="joint training learning rate")
     parser.add_argument("--codebook_size", default=128, type=int, help="RQ-VAE codebook size")
     parser.add_argument("--num_quantizers", default=3, type=int, help="number of residual quantizers")
     parser.add_argument("--quantizer_dim", default=0, type=int, help="quantizer dim, 0 means hidden_dim")
-    parser.add_argument("--commitment_weight", default=0.0, type=float, help="kept for compatibility; joint training uses task loss only")
     parser.add_argument("--max_text_length", default=256, type=int, help="joint refined text max length")
     parser.add_argument("--disable_lora", action="store_true", help="disable LoRA in stage 5")
-    parser.add_argument("--lora_r", default=16, type=int, help="LoRA rank")
+    parser.add_argument("--lora_r", default=8, type=int, help="LoRA rank")
     parser.add_argument("--lora_alpha", default=32, type=int, help="LoRA alpha")
-    parser.add_argument("--lora_dropout", default=0.05, type=float, help="LoRA dropout")
+    parser.add_argument("--lora_dropout", default=0.1, type=float, help="LoRA dropout")
     parser.add_argument(
         "--freeze_plm_embeddings",
         action="store_true",
