@@ -24,7 +24,7 @@ def build_offline_artifacts_cmd(args, dataset_name):
         "--purifier_mode",
         args.purifier_mode,
         "--encoder_name",
-        args.encoder_name,
+        args.backbone_name,
         "--pooling",
         args.pooling,
         "--batch_size",
@@ -45,113 +45,17 @@ def build_offline_artifacts_cmd(args, dataset_name):
     return cmd
 
 
-def build_stage3_cmd(args, dataset_name):
-    cmd = [
-        sys.executable,
-        "train_purified_graph_encoder.py",
-        dataset_name,
-        "--artifact_root",
-        args.artifact_root,
-        "--results_dir",
-        args.stage3_results_dir,
-        "--hidden_dim",
-        str(args.hidden_dim),
-        "--num_layers",
-        str(args.num_layers),
-        "--gnn_type",
-        args.gnn_type,
-        "--dropout",
-        str(args.graph_dropout),
-        "--batch_size",
-        str(args.graph_batch_size),
-        "--epochs",
-        str(args.stage3_epochs),
-        "--lr",
-        str(args.stage3_lr),
-        "--weight_decay",
-        str(args.weight_decay),
-        "--num_runs",
-        str(args.num_runs),
-        "--seed_base",
-        str(args.seed_base),
-    ]
-    if args.save_stage3_ze:
-        cmd.append("--save_ze")
-    return cmd
-
-
-def build_stage4_cmd(args, dataset_name):
-    stage3_checkpoint_path = os.path.join(
-        args.stage3_results_dir,
-        dataset_name,
-        f"{dataset_name}_purified_graph_encoder.pt",
-    )
-    cmd = [
-        sys.executable,
-        "train_quantized_purified_graph_encoder.py",
-        dataset_name,
-        "--artifact_root",
-        args.artifact_root,
-        "--results_dir",
-        args.stage4_results_dir,
-        "--hidden_dim",
-        str(args.hidden_dim),
-        "--num_layers",
-        str(args.num_layers),
-        "--gnn_type",
-        args.gnn_type,
-        "--dropout",
-        str(args.graph_dropout),
-        "--batch_size",
-        str(args.graph_batch_size),
-        "--epochs",
-        str(args.stage4_epochs),
-        "--lr",
-        str(args.stage4_lr),
-        "--weight_decay",
-        str(args.weight_decay),
-        "--num_runs",
-        str(args.num_runs),
-        "--seed_base",
-        str(args.seed_base),
-        "--codebook_size",
-        str(args.codebook_size),
-        "--num_quantizers",
-        str(args.num_quantizers),
-        "--quantization_weight",
-        str(args.quantization_weight),
-        "--commitment_weight",
-        str(args.commitment_weight),
-        "--stage3_checkpoint",
-        stage3_checkpoint_path,
-    ]
-    if args.quantizer_dim > 0:
-        cmd.extend(["--quantizer_dim", str(args.quantizer_dim)])
-    if args.disable_straight_through:
-        cmd.append("--disable_straight_through")
-    if args.disable_commitment_loss:
-        cmd.append("--disable_commitment_loss")
-    if args.save_quantized_artifacts:
-        cmd.append("--save_quantized_artifacts")
-    return cmd
-
-
-def build_stage5_cmd(args, dataset_name):
-    dataset_results_dir = os.path.join(args.stage5_results_dir, dataset_name)
+def build_joint_training_cmd(args, dataset_name):
+    dataset_results_dir = os.path.join(args.results_dir, dataset_name)
     node_codes_path = os.path.join(dataset_results_dir, f"{dataset_name}_node_codes.csv")
-    stage4_checkpoint_path = os.path.join(
-        args.stage4_results_dir,
-        dataset_name,
-        f"{dataset_name}_quantized_graph_encoder.pt",
-    )
     cmd = [
         sys.executable,
-        "train_quantized_graph_text_classifier.py",
+        "train_joint_graph_text_classifier.py",
         dataset_name,
         "--artifact_root",
         args.artifact_root,
         "--results_dir",
-        args.stage5_results_dir,
+        args.results_dir,
         "--hidden_dim",
         str(args.hidden_dim),
         "--num_layers",
@@ -161,11 +65,11 @@ def build_stage5_cmd(args, dataset_name):
         "--graph_dropout",
         str(args.graph_dropout),
         "--batch_size",
-        str(args.fusion_batch_size),
+        str(args.joint_batch_size),
         "--epochs",
-        str(args.stage5_epochs),
+        str(args.joint_epochs),
         "--lr",
-        str(args.stage5_lr),
+        str(args.joint_lr),
         "--weight_decay",
         str(args.weight_decay),
         "--num_runs",
@@ -181,9 +85,9 @@ def build_stage5_cmd(args, dataset_name):
         "--commitment_weight",
         str(args.commitment_weight),
         "--backbone_name",
-        args.fusion_backbone,
+        args.backbone_name,
         "--max_text_length",
-        str(args.fusion_max_text_length),
+        str(args.max_text_length),
         "--lora_r",
         str(args.lora_r),
         "--lora_alpha",
@@ -192,15 +96,9 @@ def build_stage5_cmd(args, dataset_name):
         str(args.lora_dropout),
         "--node_codes_path",
         node_codes_path,
-        "--stage4_checkpoint",
-        stage4_checkpoint_path,
     ]
     if args.quantizer_dim > 0:
         cmd.extend(["--quantizer_dim", str(args.quantizer_dim)])
-    if args.disable_straight_through:
-        cmd.append("--disable_straight_through")
-    if args.disable_commitment_loss:
-        cmd.append("--disable_commitment_loss")
     if args.disable_lora:
         cmd.append("--disable_lora")
     if args.freeze_plm_embeddings:
@@ -217,17 +115,7 @@ def main():
         "--artifact_root", default="offline_artifacts", help="offline artifact root"
     )
     parser.add_argument(
-        "--stage3_results_dir",
-        default="purified_graph_results",
-        help="stage-3 results root",
-    )
-    parser.add_argument(
-        "--stage4_results_dir",
-        default="quantized_graph_results",
-        help="stage-4 results root",
-    )
-    parser.add_argument(
-        "--stage5_results_dir", default="fusion_results", help="stage-5 results root"
+        "--results_dir", default="joint_fusion_results", help="joint stage-3/4/5 results root"
     )
 
     parser.add_argument(
@@ -245,11 +133,7 @@ def main():
     parser.add_argument("--api_url", default="", help="generic API endpoint")
     parser.add_argument("--api_key", default="", help="generic API key")
 
-    parser.add_argument(
-        "--encoder_name",
-        default="sentence-transformers/bert-base-nli-mean-tokens",
-        help="stage-2 frozen text encoder backbone",
-    )
+    parser.add_argument("--backbone_name", default="scibert", help="unified PLM backbone")
     parser.add_argument("--pooling", default="mean", choices=["cls", "mean"], help="embedding pooling")
     parser.add_argument(
         "--text_batch_size", default=32, type=int, help="offline text encoding batch size"
@@ -267,53 +151,17 @@ def main():
         "--gnn_type", default="sage", choices=["sage", "gcn", "gat"], help="graph backbone"
     )
     parser.add_argument("--graph_dropout", default=0.2, type=float, help="graph dropout")
-    parser.add_argument("--graph_batch_size", default=1024, type=int, help="stage-3/4 graph batch size")
-    parser.add_argument("--fusion_batch_size", default=32, type=int, help="stage-5 batch size")
+    parser.add_argument("--joint_batch_size", default=64, type=int, help="joint stage-3/4/5 batch size")
     parser.add_argument("--weight_decay", default=5e-4, type=float, help="weight decay")
-    parser.add_argument("--num_runs", default=1, type=int, help="repeated runs per stage")
+    parser.add_argument("--num_runs", default=1, type=int, help="repeated joint runs")
     parser.add_argument("--seed_base", default=42, type=int, help="base random seed")
-
-    parser.add_argument("--stage3_epochs", default=30, type=int, help="stage-3 epochs")
-    parser.add_argument("--stage3_lr", default=1e-3, type=float, help="stage-3 learning rate")
-    parser.add_argument("--save_stage3_ze", action="store_true", help="save final Ze tensor")
-
-    parser.add_argument("--stage4_epochs", default=30, type=int, help="stage-4 epochs")
-    parser.add_argument("--stage4_lr", default=1e-3, type=float, help="stage-4 learning rate")
+    parser.add_argument("--joint_epochs", default=10, type=int, help="joint training epochs")
+    parser.add_argument("--joint_lr", default=2e-4, type=float, help="joint training learning rate")
     parser.add_argument("--codebook_size", default=128, type=int, help="RQ-VAE codebook size")
     parser.add_argument("--num_quantizers", default=3, type=int, help="number of residual quantizers")
     parser.add_argument("--quantizer_dim", default=0, type=int, help="quantizer dim, 0 means hidden_dim")
-    parser.add_argument(
-        "--quantization_weight", default=1.0, type=float, help="quantization loss weight"
-    )
-    parser.add_argument(
-        "--commitment_weight", default=0.25, type=float, help="commitment loss weight"
-    )
-    parser.add_argument(
-        "--disable_straight_through",
-        action="store_true",
-        help="disable straight-through estimator",
-    )
-    parser.add_argument(
-        "--disable_commitment_loss",
-        action="store_true",
-        help="disable commitment/codebook losses",
-    )
-    parser.add_argument(
-        "--save_quantized_artifacts",
-        action="store_true",
-        help="save stage-4 Ze/Zq/code tensors",
-    )
-
-    parser.add_argument("--stage5_epochs", default=10, type=int, help="stage-5 epochs")
-    parser.add_argument("--stage5_lr", default=1e-4, type=float, help="stage-5 learning rate")
-    parser.add_argument(
-        "--fusion_backbone",
-        default="sentence-transformers/bert-base-nli-mean-tokens",
-        help="stage-5 PLM backbone for cross-modal fusion",
-    )
-    parser.add_argument(
-        "--fusion_max_text_length", default=128, type=int, help="stage-5 max refined text length"
-    )
+    parser.add_argument("--commitment_weight", default=0.0, type=float, help="kept for compatibility; joint training uses task loss only")
+    parser.add_argument("--max_text_length", default=256, type=int, help="joint refined text max length")
     parser.add_argument("--disable_lora", action="store_true", help="disable LoRA in stage 5")
     parser.add_argument("--lora_r", default=16, type=int, help="LoRA rank")
     parser.add_argument("--lora_alpha", default=32, type=int, help="LoRA alpha")
@@ -332,23 +180,15 @@ def main():
         "Stage 1-2: text purification and frozen PLM embedding extraction",
     )
     run_stage(
-        build_stage3_cmd(args, dataset_name),
-        "Stage 3: MLP + GNN purified graph encoder",
-    )
-    run_stage(
-        build_stage4_cmd(args, dataset_name),
-        "Stage 4: residual quantization (RQ-VAE)",
-    )
-    run_stage(
-        build_stage5_cmd(args, dataset_name),
-        "Stage 5: cross-modal fusion classifier with LoRA PLM",
+        build_joint_training_cmd(args, dataset_name),
+        "Stage 3-5: joint MLP + GNN + RQ + PLM(LoRA) optimization",
     )
 
     final_summary = os.path.join(
-        args.stage5_results_dir, dataset_name, f"{dataset_name}_fusion_summary.csv"
+        args.results_dir, dataset_name, f"{dataset_name}_joint_summary.csv"
     )
     final_checkpoint = os.path.join(
-        args.stage5_results_dir, dataset_name, f"{dataset_name}_fusion_model.pt"
+        args.results_dir, dataset_name, f"{dataset_name}_joint_model.pt"
     )
 
     print(f"\n{'=' * 90}")
