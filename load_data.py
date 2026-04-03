@@ -11,6 +11,15 @@ from torch_geometric.data import Data
 from torch_geometric.datasets import Amazon, Planetoid
 from torch_geometric.utils import degree, to_edge_index
 
+try:
+    from torch.serialization import add_safe_globals
+    from torch_geometric.data.data import DataEdgeAttr, DataTensorAttr
+    from torch_geometric.data.storage import GlobalStorage
+
+    add_safe_globals([DataEdgeAttr, DataTensorAttr, GlobalStorage])
+except Exception:
+    pass
+
 
 ARXIV_TEXT_URL = "https://snap.stanford.edu/ogb/data/misc/ogbn_arxiv/titleabs.tsv.gz"
 PUBMED_GDRIVE_FILE_ID = "1sYZX-jP6H8OkopVa9cp8-KXdEti5ki_W"
