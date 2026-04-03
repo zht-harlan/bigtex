@@ -260,6 +260,24 @@ def export_node_codes(model, loader, refined_texts, device, output_csv_path):
     print(f"Saved node codes to: {output_csv_path}")
 
 
+def load_stage4_checkpoint_into_fusion_graph_encoder(model, checkpoint_path, device):
+    if not checkpoint_path:
+        return
+    if not os.path.exists(checkpoint_path):
+        raise FileNotFoundError(f"Stage-4 checkpoint not found: {checkpoint_path}")
+
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+    state_dict = checkpoint.get("model_state_dict", checkpoint)
+    missing_keys, unexpected_keys = model.graph_encoder.load_state_dict(
+        state_dict, strict=False
+    )
+    print(f"Loaded stage-4 graph encoder weights from: {checkpoint_path}")
+    if missing_keys:
+        print(f"Missing keys when loading stage-4 weights: {len(missing_keys)}")
+    if unexpected_keys:
+        print(f"Unexpected keys when loading stage-4 weights: {len(unexpected_keys)}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Train final cross-modal quantized graph-text classifier")
     parser.add_argument("dataset_name", help="dataset name")
@@ -292,6 +310,11 @@ def main():
     parser.add_argument("--lora_dropout", default=0.1, type=float, help="LoRA dropout")
     parser.add_argument("--freeze_plm_embeddings", action="store_true", help="freeze token embedding matrix")
     parser.add_argument("--node_codes_path", default="outputs/node_codes.csv", help="csv export path for test node codes")
+    parser.add_argument(
+        "--stage4_checkpoint",
+        default="",
+        help="optional stage-4 checkpoint path to initialize graph encoder",
+    )
     args = parser.parse_args()
 
     start_time = time.time()
@@ -370,6 +393,9 @@ def main():
             freeze_plm_embeddings=args.freeze_plm_embeddings,
             debug_shapes=True,
         ).to(device)
+        load_stage4_checkpoint_into_fusion_graph_encoder(
+            model, args.stage4_checkpoint, device
+        )
 
         metrics = train_one_run(
             model=model,

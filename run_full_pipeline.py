@@ -132,6 +132,11 @@ def build_stage4_cmd(args, dataset_name):
 def build_stage5_cmd(args, dataset_name):
     dataset_results_dir = os.path.join(args.stage5_results_dir, dataset_name)
     node_codes_path = os.path.join(dataset_results_dir, f"{dataset_name}_node_codes.csv")
+    stage4_checkpoint_path = os.path.join(
+        args.stage4_results_dir,
+        dataset_name,
+        f"{dataset_name}_quantized_graph_encoder.pt",
+    )
     cmd = [
         sys.executable,
         "train_quantized_graph_text_classifier.py",
@@ -180,6 +185,8 @@ def build_stage5_cmd(args, dataset_name):
         str(args.lora_dropout),
         "--node_codes_path",
         node_codes_path,
+        "--stage4_checkpoint",
+        stage4_checkpoint_path,
     ]
     if args.quantizer_dim > 0:
         cmd.extend(["--quantizer_dim", str(args.quantizer_dim)])
