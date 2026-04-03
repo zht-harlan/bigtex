@@ -243,6 +243,24 @@ def save_final_artifacts(model, data, device, output_dir, dataset_name):
     print(f"Saved code indices to: {code_path}")
 
 
+def load_stage3_checkpoint_into_stage4_encoder(model, checkpoint_path, device):
+    if not checkpoint_path:
+        return
+    if not os.path.exists(checkpoint_path):
+        raise FileNotFoundError(f"Stage-3 checkpoint not found: {checkpoint_path}")
+
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+    state_dict = checkpoint.get("model_state_dict", checkpoint)
+    missing_keys, unexpected_keys = model.encoder.load_state_dict(
+        state_dict, strict=False
+    )
+    print(f"Loaded stage-3 encoder weights from: {checkpoint_path}")
+    if missing_keys:
+        print(f"Missing keys when loading stage-3 weights: {len(missing_keys)}")
+    if unexpected_keys:
+        print(f"Unexpected keys when loading stage-3 weights: {len(unexpected_keys)}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Train stage-4 quantized graph encoder on cached text embeddings")
     parser.add_argument("dataset_name", help="dataset name")
@@ -267,6 +285,11 @@ def main():
     parser.add_argument("--disable_straight_through", action="store_true", help="disable straight-through estimator")
     parser.add_argument("--disable_commitment_loss", action="store_true", help="disable commitment/codebook losses")
     parser.add_argument("--save_quantized_artifacts", action="store_true", help="save Ze/Zq/code indices")
+    parser.add_argument(
+        "--stage3_checkpoint",
+        default="",
+        help="optional stage-3 checkpoint path to initialize graph encoder",
+    )
     args = parser.parse_args()
 
     start_time = time.time()
@@ -330,6 +353,9 @@ def main():
             commitment_weight=args.commitment_weight,
             debug_shapes=True,
         ).to(device)
+        load_stage3_checkpoint_into_stage4_encoder(
+            model, args.stage3_checkpoint, device
+        )
 
         metrics = train_one_run(
             model=model,

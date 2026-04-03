@@ -81,6 +81,11 @@ def build_stage3_cmd(args, dataset_name):
 
 
 def build_stage4_cmd(args, dataset_name):
+    stage3_checkpoint_path = os.path.join(
+        args.stage3_results_dir,
+        dataset_name,
+        f"{dataset_name}_purified_graph_encoder.pt",
+    )
     cmd = [
         sys.executable,
         "train_quantized_purified_graph_encoder.py",
@@ -117,6 +122,8 @@ def build_stage4_cmd(args, dataset_name):
         str(args.quantization_weight),
         "--commitment_weight",
         str(args.commitment_weight),
+        "--stage3_checkpoint",
+        stage3_checkpoint_path,
     ]
     if args.quantizer_dim > 0:
         cmd.extend(["--quantizer_dim", str(args.quantizer_dim)])
