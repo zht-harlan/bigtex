@@ -60,6 +60,18 @@ def ensure_pubmed_json():
     return output_path if success else None
 
 
+def load_json_with_fallback_encodings(path, encodings=None):
+    encodings = encodings or ["utf-8", "utf-8-sig", "gbk", "latin-1"]
+    last_error = None
+    for encoding in encodings:
+        try:
+            with open(path, "r", encoding=encoding) as f:
+                return json.load(f)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            last_error = exc
+    raise ValueError(f"Failed to decode JSON file: {path}. Last error: {last_error}")
+
+
 def build_feature_texts(x, prefix, topk=32):
     x_cpu = x.detach().cpu()
     texts = []
@@ -258,12 +270,18 @@ def load_pubmed():
 
     pubmed_json_path = ensure_pubmed_json()
     if pubmed_json_path and os.path.exists(pubmed_json_path):
-        with open(pubmed_json_path, "r", encoding="utf-8") as f:
-            pubmed = json.load(f)
-        df_pubmed = pd.DataFrame.from_dict(pubmed)
-        ab = df_pubmed["AB"].fillna("")
-        ti = df_pubmed["TI"].fillna("")
-        texts = [f"[sep] {title} [sep] {abstract}" for title, abstract in zip(ti, ab)]
+        try:
+            pubmed = load_json_with_fallback_encodings(pubmed_json_path)
+            df_pubmed = pd.DataFrame.from_dict(pubmed)
+            ab = df_pubmed["AB"].fillna("")
+            ti = df_pubmed["TI"].fillna("")
+            texts = [f"[sep] {title} [sep] {abstract}" for title, abstract in zip(ti, ab)]
+        except (ValueError, KeyError, TypeError) as exc:
+            print(
+                f"Failed to parse pubmed.json at {pubmed_json_path}; "
+                f"falling back to synthetic texts. Error: {exc}"
+            )
+            texts = build_feature_texts(base_data.x, "pubmed")
     else:
         print("pubmed.json not available; using synthetic texts from node features.")
         texts = build_feature_texts(base_data.x, "pubmed")
