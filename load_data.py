@@ -57,14 +57,17 @@ def _candidate_cstag_csv_paths(data_root, dataset_name):
         if name not in file_names:
             file_names.append(name)
 
-    candidate_paths = []
-    for directory_name in directory_names:
-        for file_name in file_names:
-            candidate_paths.append(os.path.join(data_root, directory_name, file_name))
-        candidate_paths.append(os.path.join(data_root, directory_name))
+    root_prefixes = [data_root, os.path.join(data_root, "CSTAG")]
 
-    for file_name in file_names:
-        candidate_paths.append(os.path.join(data_root, file_name))
+    candidate_paths = []
+    for root_prefix in root_prefixes:
+        for directory_name in directory_names:
+            for file_name in file_names:
+                candidate_paths.append(os.path.join(root_prefix, directory_name, file_name))
+            candidate_paths.append(os.path.join(root_prefix, directory_name))
+
+        for file_name in file_names:
+            candidate_paths.append(os.path.join(root_prefix, file_name))
 
     deduped_paths = []
     for path in candidate_paths:
