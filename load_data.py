@@ -1,6 +1,7 @@
 import json
 import os
 import urllib.request
+from ast import literal_eval
 
 import numpy as np
 import pandas as pd
@@ -23,6 +24,11 @@ except Exception:
 
 ARXIV_TEXT_URL = "https://snap.stanford.edu/ogb/data/misc/ogbn_arxiv/titleabs.tsv.gz"
 PUBMED_GDRIVE_FILE_ID = "1sYZX-jP6H8OkopVa9cp8-KXdEti5ki_W"
+CSTAG_DIR_NAMES = {
+    "children": "Children",
+    "history": "History",
+    "photo": "Photo",
+}
 
 
 def ensure_dir(path):
@@ -96,6 +102,83 @@ def build_feature_texts(x, prefix, topk=32):
             tokens = ["no_feature"]
         texts.append(f"[sep] {prefix} node {idx} [sep] " + " ".join(tokens))
     return texts
+
+
+def _make_random_split_data(x, edge_index, y, seed=42):
+    num_nodes = y.numel()
+    rng = np.random.default_rng(seed)
+    node_id = np.arange(num_nodes)
+    rng.shuffle(node_id)
+
+    data = Data(
+        n_id=torch.arange(num_nodes),
+        x=x,
+        edge_index=edge_index,
+        y=y,
+    )
+    data.train_idx = torch.from_numpy(np.sort(node_id[: int(num_nodes * 0.6)])).long()
+    data.valid_idx = torch.from_numpy(
+        np.sort(node_id[int(num_nodes * 0.6) : int(num_nodes * 0.8)])
+    ).long()
+    data.test_idx = torch.from_numpy(np.sort(node_id[int(num_nodes * 0.8) :])).long()
+    return data
+
+
+def _build_edge_index_from_neighbors(neighbor_series):
+    row = []
+    col = []
+
+    for source_id, raw_neighbors in enumerate(neighbor_series.tolist()):
+        if pd.isna(raw_neighbors):
+            continue
+        neighbors = literal_eval(raw_neighbors) if isinstance(raw_neighbors, str) else raw_neighbors
+        for target_id in neighbors:
+            row.append(source_id)
+            col.append(int(target_id))
+
+    if not row:
+        return torch.empty((2, 0), dtype=torch.long)
+
+    edge_index = torch.tensor([row, col], dtype=torch.long)
+    edge_index = torch.unique(edge_index, dim=1)
+    return edge_index
+
+
+def load_cstag_csv_dataset(dataset_name, data_root="datasets", seed=42):
+    normalized_name = dataset_name.lower()
+    if normalized_name not in CSTAG_DIR_NAMES:
+        raise ValueError(f"Unsupported CSTAG dataset: {dataset_name}")
+
+    dataset_dir = os.path.join(data_root, CSTAG_DIR_NAMES[normalized_name])
+    csv_path = os.path.join(dataset_dir, f"{CSTAG_DIR_NAMES[normalized_name]}.csv")
+    if not os.path.exists(csv_path):
+        raise FileNotFoundError(f"CSTAG CSV not found: {csv_path}")
+
+    df = pd.read_csv(csv_path)
+    required_columns = {"text", "label", "node_id", "neighbour"}
+    missing_columns = required_columns.difference(df.columns)
+    if missing_columns:
+        raise ValueError(f"CSTAG CSV missing columns {sorted(missing_columns)}: {csv_path}")
+
+    df = df.sort_values("node_id").reset_index(drop=True)
+    expected_node_ids = np.arange(len(df))
+    actual_node_ids = df["node_id"].to_numpy()
+    if not np.array_equal(actual_node_ids, expected_node_ids):
+        raise ValueError(
+            f"CSTAG node_id column must be contiguous from 0..N-1 in {csv_path}; "
+            f"got first values {actual_node_ids[:5].tolist()}"
+        )
+
+    edge_index = _build_edge_index_from_neighbors(df["neighbour"])
+    y = torch.tensor(df["label"].to_numpy(), dtype=torch.long)
+    x = torch.ones((len(df), 1), dtype=torch.float32)
+    data = _make_random_split_data(x=x, edge_index=edge_index, y=y, seed=seed)
+
+    texts = [f"[sep] {text}" for text in df["text"].fillna("").astype(str).tolist()]
+    degrees = degree(edge_index.reshape(-1), num_nodes=data.num_nodes) if edge_index.numel() else torch.zeros(data.num_nodes)
+    print(f"Loaded CSTAG CSV dataset from: {csv_path}")
+    print(f"Average node degree (directed edge list): {degrees.mean().item():.4f}")
+    return data, texts
 
 
 def load_cora():

@@ -264,6 +264,7 @@ def load_stage3_checkpoint_into_stage4_encoder(model, checkpoint_path, device):
 def main():
     parser = argparse.ArgumentParser(description="Train stage-4 quantized graph encoder on cached text embeddings")
     parser.add_argument("dataset_name", help="dataset name")
+    parser.add_argument("--data_root", default="datasets", help="root directory containing local dataset folders")
     parser.add_argument("--artifact_root", default="offline_artifacts", help="cached embedding root")
     parser.add_argument("--embedding_filename", default="text_embeddings.pt", help="embedding tensor filename")
     parser.add_argument("--results_dir", default="quantized_graph_results", help="output directory")
@@ -301,7 +302,7 @@ def main():
     print(f"Using device: {device}")
 
     set_seed(args.seed_base)
-    _, data, _ = load_dataset_with_texts(dataset_name)
+    _, data, _ = load_dataset_with_texts(dataset_name, data_root=args.data_root)
     cached_embeddings, embedding_path = load_cached_text_embeddings(
         dataset_name=dataset_name,
         artifact_root=args.artifact_root,

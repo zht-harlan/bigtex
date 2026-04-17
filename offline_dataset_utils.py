@@ -6,6 +6,7 @@ import torch
 from load_data import (
     load_arxiv,
     load_arxiv_2023,
+    load_cstag_csv_dataset,
     load_citeseer,
     load_cora,
     load_ogb_products,
@@ -21,6 +22,8 @@ DATASET_ALIASES = {
     "amazon-photo": "photo",
     "amazon_photo": "photo",
     "amazonphoto": "photo",
+    "children": "children",
+    "history": "history",
 }
 
 
@@ -28,17 +31,24 @@ def normalize_dataset_name(dataset_name):
     return DATASET_ALIASES.get(dataset_name.lower(), dataset_name.lower())
 
 
-def load_dataset_with_texts(dataset_name):
+def load_dataset_with_texts(dataset_name, data_root="datasets"):
     dataset_name = normalize_dataset_name(dataset_name)
 
-    if dataset_name == "products-subset":
+    if dataset_name in ["children", "history"]:
+        data, texts = load_cstag_csv_dataset(dataset_name=dataset_name, data_root=data_root)
+    elif dataset_name == "products-subset":
         data, texts = load_products_subset()
     elif dataset_name == "products":
         data, texts = load_ogb_products()
     elif dataset_name == "citeseer":
         data, texts = load_citeseer()
     elif dataset_name == "photo":
-        data, texts = load_photo()
+        photo_dir = os.path.join(data_root, "Photo")
+        photo_pt = os.path.join(photo_dir, "Photo.csv")
+        if os.path.exists(photo_pt):
+            data, texts = load_cstag_csv_dataset(dataset_name=dataset_name, data_root=data_root)
+        else:
+            data, texts = load_photo()
     elif dataset_name in ["arxiv", "arxiv_sim"]:
         data, texts = load_arxiv(dataset_name=dataset_name)
     elif dataset_name == "cora":

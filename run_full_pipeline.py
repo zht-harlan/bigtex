@@ -21,6 +21,8 @@ def build_offline_artifacts_cmd(args, dataset_name):
         dataset_name,
         "--output_root",
         args.artifact_root,
+        "--data_root",
+        args.data_root,
         "--purifier_mode",
         args.purifier_mode,
         "--encoder_name",
@@ -54,6 +56,8 @@ def build_joint_training_cmd(args, dataset_name):
         dataset_name,
         "--artifact_root",
         args.artifact_root,
+        "--data_root",
+        args.data_root,
         "--results_dir",
         args.results_dir,
         "--hidden_dim",
@@ -107,6 +111,7 @@ def main():
         description="Run the full 5-stage BiGTex pipeline end-to-end."
     )
     parser.add_argument("dataset_name", help="dataset name")
+    parser.add_argument("--data_root", default="datasets", help="root directory containing local dataset folders")
     parser.add_argument(
         "--artifact_root", default="offline_artifacts", help="offline artifact root"
     )

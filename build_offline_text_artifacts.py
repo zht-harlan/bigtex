@@ -24,6 +24,7 @@ def main():
     parser.add_argument("--prompt_path", default="", help="optional prompt template path")
     parser.add_argument("--api_url", default="", help="generic API endpoint for api mode")
     parser.add_argument("--api_key", default="", help="generic API key for api mode")
+    parser.add_argument("--data_root", default="datasets", help="root directory containing local dataset folders")
     parser.add_argument("--encoder_name", default="scibert", help="encoder backbone")
     parser.add_argument("--pooling", default="cls", choices=["cls", "mean"], help="pooling")
     parser.add_argument("--batch_size", default=32, type=int, help="encoding batch size")
@@ -37,6 +38,8 @@ def main():
         args.dataset_name,
         "--output_root",
         args.output_root,
+        "--data_root",
+        args.data_root,
         "--mode",
         args.purifier_mode,
     ]

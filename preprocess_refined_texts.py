@@ -91,10 +91,15 @@ def main():
     )
     parser.add_argument("--api_url", default="", help="generic API endpoint for api mode")
     parser.add_argument("--api_key", default="", help="generic API key for api mode")
+    parser.add_argument(
+        "--data_root",
+        default="datasets",
+        help="root directory containing local dataset folders",
+    )
     args = parser.parse_args()
 
     dataset_name = normalize_dataset_name(args.dataset_name)
-    _, _, original_texts = load_dataset_with_texts(dataset_name)
+    _, _, original_texts = load_dataset_with_texts(dataset_name, data_root=args.data_root)
     dataset_dir = dataset_artifact_dir(args.output_root, dataset_name)
 
     prompt_template = load_prompt_template(args.prompt_path)

@@ -233,6 +233,7 @@ def main():
         description="Train Stage 3-5 jointly: MLP -> GNN -> RQ -> PLM(LoRA) with task loss only."
     )
     parser.add_argument("dataset_name", help="dataset name")
+    parser.add_argument("--data_root", default="datasets", help="root directory containing local dataset folders")
     parser.add_argument("--artifact_root", default="offline_artifacts", help="offline artifact root")
     parser.add_argument("--embedding_filename", default="text_embeddings.pt", help="cached embedding filename")
     parser.add_argument("--refined_texts_filename", default="refined_texts.jsonl", help="refined texts filename")
@@ -269,7 +270,7 @@ def main():
     print(f"Using device: {device}")
 
     set_seed(args.seed_base)
-    _, data, _ = load_dataset_with_texts(dataset_name)
+    _, data, _ = load_dataset_with_texts(dataset_name, data_root=args.data_root)
     cached_embeddings, embedding_path = load_cached_text_embeddings(
         dataset_name=dataset_name,
         artifact_root=args.artifact_root,

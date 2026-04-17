@@ -21,6 +21,8 @@ def build_offline_artifacts_cmd(args, dataset_name):
         dataset_name,
         "--output_root",
         args.artifact_root,
+        "--data_root",
+        args.data_root,
         "--purifier_mode",
         args.purifier_mode,
         "--encoder_name",
@@ -54,6 +56,8 @@ def build_joint_training_cmd(args, dataset_name):
         dataset_name,
         "--artifact_root",
         args.artifact_root,
+        "--data_root",
+        args.data_root,
         "--results_dir",
         args.results_dir,
         "--hidden_dim",
@@ -109,6 +113,7 @@ def main():
         description="Run the full 5-stage BiGTex pipeline end-to-end with single-level DiVeQ."
     )
     parser.add_argument("dataset_name", help="dataset name")
+    parser.add_argument("--data_root", default="datasets", help="root directory containing local dataset folders")
     parser.add_argument("--artifact_root", default="offline_artifacts", help="offline artifact root")
     parser.add_argument("--results_dir", default="joint_fusion_results_diveq", help="DiVeQ results root")
 
@@ -129,16 +134,16 @@ def main():
     parser.add_argument("--text_max_length", default=256, type=int, help="offline text encoding max length")
     parser.add_argument("--normalize_embeddings", action="store_true", help="l2 normalize offline embeddings")
 
-    parser.add_argument("--hidden_dim", default=256, type=int, help="Ze hidden dimension")
-    parser.add_argument("--num_layers", default=2, type=int, help="number of GNN layers")
+    parser.add_argument("--hidden_dim", "--hidden-dim", dest="hidden_dim", default=256, type=int, help="Ze hidden dimension")
+    parser.add_argument("--num_layers", "--num-layers", dest="num_layers", default=2, type=int, help="number of GNN layers")
     parser.add_argument("--gnn_type", default="sage", choices=["sage", "gcn", "gat"], help="graph backbone")
-    parser.add_argument("--graph_dropout", default=0.2, type=float, help="graph dropout")
+    parser.add_argument("--graph_dropout", "--dropout", dest="graph_dropout", default=0.2, type=float, help="graph dropout")
     parser.add_argument("--joint_batch_size", default=64, type=int, help="joint stage-3/4/5 batch size")
     parser.add_argument("--weight_decay", default=5e-4, type=float, help="weight decay")
-    parser.add_argument("--num_runs", default=1, type=int, help="repeated joint runs")
+    parser.add_argument("--num_runs", "--runs", dest="num_runs", default=1, type=int, help="repeated joint runs")
     parser.add_argument("--seed_base", default=42, type=int, help="base random seed")
     parser.add_argument("--joint_epochs", default=20, type=int, help="joint training epochs")
-    parser.add_argument("--joint_lr", default=2e-4, type=float, help="joint training learning rate")
+    parser.add_argument("--joint_lr", "--lr", dest="joint_lr", default=2e-4, type=float, help="joint training learning rate")
     parser.add_argument("--codebook_size", default=128, type=int, help="DiVeQ codebook size")
     parser.add_argument("--quantizer_dim", default=0, type=int, help="quantizer dim, 0 means hidden_dim")
     parser.add_argument("--max_text_length", default=256, type=int, help="joint refined text max length")

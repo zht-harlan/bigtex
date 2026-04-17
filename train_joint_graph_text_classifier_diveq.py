@@ -235,19 +235,20 @@ def main():
         description="Train Stage 3-5 jointly: MLP -> GNN -> single-level DiVeQ -> PLM(LoRA)."
     )
     parser.add_argument("dataset_name", help="dataset name")
+    parser.add_argument("--data_root", default="datasets", help="root directory containing local dataset folders")
     parser.add_argument("--artifact_root", default="offline_artifacts", help="offline artifact root")
     parser.add_argument("--embedding_filename", default="text_embeddings.pt", help="cached embedding filename")
     parser.add_argument("--refined_texts_filename", default="refined_texts.jsonl", help="refined texts filename")
     parser.add_argument("--results_dir", default="joint_fusion_results_diveq", help="output directory")
-    parser.add_argument("--hidden_dim", default=256, type=int, help="continuous Ze dimension")
-    parser.add_argument("--num_layers", default=2, type=int, help="number of GNN layers")
+    parser.add_argument("--hidden_dim", "--hidden-dim", dest="hidden_dim", default=256, type=int, help="continuous Ze dimension")
+    parser.add_argument("--num_layers", "--num-layers", dest="num_layers", default=2, type=int, help="number of GNN layers")
     parser.add_argument("--gnn_type", default="sage", choices=["sage", "gcn", "gat"], help="GNN backbone")
-    parser.add_argument("--graph_dropout", default=0.2, type=float, help="graph-side dropout")
+    parser.add_argument("--graph_dropout", "--dropout", dest="graph_dropout", default=0.2, type=float, help="graph-side dropout")
     parser.add_argument("--batch_size", default=64, type=int, help="seed batch size")
     parser.add_argument("--epochs", default=10, type=int, help="training epochs")
-    parser.add_argument("--lr", default=2e-4, type=float, help="learning rate")
+    parser.add_argument("--lr", "--joint_lr", dest="lr", default=2e-4, type=float, help="learning rate")
     parser.add_argument("--weight_decay", default=5e-4, type=float, help="weight decay")
-    parser.add_argument("--num_runs", default=1, type=int, help="number of repeated runs")
+    parser.add_argument("--num_runs", "--runs", dest="num_runs", default=1, type=int, help="number of repeated runs")
     parser.add_argument("--seed_base", default=42, type=int, help="base random seed")
     parser.add_argument("--codebook_size", default=128, type=int, help="DiVeQ codebook size")
     parser.add_argument("--quantizer_dim", default=0, type=int, help="internal quantizer dim, 0 means hidden_dim")
@@ -272,7 +273,7 @@ def main():
     print(f"Using device: {device}")
 
     set_seed(args.seed_base)
-    _, data, _ = load_dataset_with_texts(dataset_name)
+    _, data, _ = load_dataset_with_texts(dataset_name, data_root=args.data_root)
     cached_embeddings, embedding_path = load_cached_text_embeddings(
         dataset_name=dataset_name,
         artifact_root=args.artifact_root,
