@@ -35,6 +35,58 @@ def ensure_dir(path):
     os.makedirs(path, exist_ok=True)
 
 
+def _candidate_cstag_csv_paths(data_root, dataset_name):
+    canonical_name = CSTAG_DIR_NAMES[dataset_name]
+    lower_name = dataset_name.lower()
+    title_name = dataset_name.title()
+    upper_name = dataset_name.upper()
+
+    directory_names = []
+    for name in [canonical_name, lower_name, title_name, upper_name]:
+        if name not in directory_names:
+            directory_names.append(name)
+
+    file_names = []
+    for name in [
+        f"{canonical_name}.csv",
+        f"{lower_name}.csv",
+        f"{title_name}.csv",
+        f"{upper_name}.csv",
+        "data.csv",
+    ]:
+        if name not in file_names:
+            file_names.append(name)
+
+    candidate_paths = []
+    for directory_name in directory_names:
+        for file_name in file_names:
+            candidate_paths.append(os.path.join(data_root, directory_name, file_name))
+        candidate_paths.append(os.path.join(data_root, directory_name))
+
+    for file_name in file_names:
+        candidate_paths.append(os.path.join(data_root, file_name))
+
+    deduped_paths = []
+    for path in candidate_paths:
+        if path not in deduped_paths:
+            deduped_paths.append(path)
+    return deduped_paths
+
+
+def resolve_cstag_csv_path(data_root, dataset_name):
+    candidate_paths = _candidate_cstag_csv_paths(data_root, dataset_name)
+
+    for path in candidate_paths:
+        if os.path.isfile(path):
+            return path
+
+    missing_preview = "\n".join(candidate_paths[:8])
+    raise FileNotFoundError(
+        f"CSTAG CSV not found for dataset '{dataset_name}' under data_root '{data_root}'. "
+        f"Tried paths including:\n{missing_preview}"
+    )
+
+
 def download_with_urllib(url, output_path):
     ensure_dir(os.path.dirname(output_path))
     print(f"Downloading {url} -> {output_path}")
@@ -149,10 +201,8 @@ def load_cstag_csv_dataset(dataset_name, data_root="datasets", seed=42):
     if normalized_name not in CSTAG_DIR_NAMES:
         raise ValueError(f"Unsupported CSTAG dataset: {dataset_name}")
 
-    dataset_dir = os.path.join(data_root, CSTAG_DIR_NAMES[normalized_name])
-    csv_path = os.path.join(dataset_dir, f"{CSTAG_DIR_NAMES[normalized_name]}.csv")
-    if not os.path.exists(csv_path):
-        raise FileNotFoundError(f"CSTAG CSV not found: {csv_path}")
+    csv_path = resolve_cstag_csv_path(data_root, normalized_name)
+    dataset_dir = os.path.dirname(csv_path)
 
     df = pd.read_csv(csv_path)
     required_columns = {"text", "label", "node_id", "neighbour"}
