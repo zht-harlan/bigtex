@@ -167,15 +167,15 @@ def _make_random_split_data(x, edge_index, y, seed=42):
 
     data = Data(
         n_id=torch.arange(num_nodes),
-        x=x,
-        edge_index=edge_index,
-        y=y,
+        x=x.contiguous(),
+        edge_index=edge_index.contiguous(),
+        y=y.contiguous(),
     )
-    data.train_idx = torch.from_numpy(np.sort(node_id[: int(num_nodes * 0.6)])).long()
+    data.train_idx = torch.from_numpy(np.sort(node_id[: int(num_nodes * 0.6)])).long().contiguous()
     data.valid_idx = torch.from_numpy(
         np.sort(node_id[int(num_nodes * 0.6) : int(num_nodes * 0.8)])
-    ).long()
-    data.test_idx = torch.from_numpy(np.sort(node_id[int(num_nodes * 0.8) :])).long()
+    ).long().contiguous()
+    data.test_idx = torch.from_numpy(np.sort(node_id[int(num_nodes * 0.8) :])).long().contiguous()
     return data
 
 
@@ -196,7 +196,7 @@ def _build_edge_index_from_neighbors(neighbor_series):
 
     edge_index = torch.tensor([row, col], dtype=torch.long)
     edge_index = torch.unique(edge_index, dim=1)
-    return edge_index
+    return edge_index.contiguous()
 
 
 def load_cstag_csv_dataset(dataset_name, data_root="datasets", seed=42):
@@ -224,7 +224,7 @@ def load_cstag_csv_dataset(dataset_name, data_root="datasets", seed=42):
 
     edge_index = _build_edge_index_from_neighbors(df["neighbour"])
     y = torch.tensor(df["label"].to_numpy(), dtype=torch.long)
-    x = torch.ones((len(df), 1), dtype=torch.float32)
+    x = torch.ones((len(df), 1), dtype=torch.float32).contiguous()
     data = _make_random_split_data(x=x, edge_index=edge_index, y=y, seed=seed)
 
     texts = [f"[sep] {text}" for text in df["text"].fillna("").astype(str).tolist()]
