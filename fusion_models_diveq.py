@@ -82,12 +82,14 @@ class CrossModalFusionDiVeQPLM(nn.Module):
         lora_dropout=0.1,
         freeze_plm_embeddings=False,
         enable_vq_aux_head=False,
+        enable_text_aux_head=False,
         debug_shapes=True,
     ):
         super().__init__()
         self.debug_shapes = debug_shapes
         self.shape_debug_printed = False
         self.max_text_length = max_text_length
+        self.enable_text_aux_head = enable_text_aux_head
 
         resolved_backbone = resolve_backbone_name(backbone_name)
         self.backbone_name = resolved_backbone
@@ -126,6 +128,11 @@ class CrossModalFusionDiVeQPLM(nn.Module):
 
         self.struct_token_projection = nn.Linear(hidden_dim, self.plm_hidden_size)
         self.sep_projection = nn.Linear(self.plm_hidden_size, self.plm_hidden_size)
+        self.fusion_projection = nn.Sequential(
+            nn.Linear(self.plm_hidden_size * 2, self.plm_hidden_size),
+            nn.ReLU(),
+            nn.Dropout(graph_dropout),
+        )
         self.classifier = nn.Sequential(
             nn.Linear(self.plm_hidden_size, self.plm_hidden_size),
             nn.ReLU(),
@@ -140,23 +147,39 @@ class CrossModalFusionDiVeQPLM(nn.Module):
                 nn.Dropout(graph_dropout),
                 nn.Linear(hidden_dim, num_classes),
             )
+        self.text_aux_classifier = None
+        if enable_text_aux_head:
+            self.text_aux_classifier = nn.Sequential(
+                nn.Linear(self.plm_hidden_size, self.plm_hidden_size),
+                nn.ReLU(),
+                nn.Dropout(graph_dropout),
+                nn.Linear(self.plm_hidden_size, num_classes),
+            )
 
-    def _get_sep_embedding(self, batch_size, device):
-        sep_id = self.tokenizer.sep_token_id
-        if sep_id is None:
-            sep_id = self.tokenizer.eos_token_id
-        if sep_id is None:
-            sep_id = self.tokenizer.cls_token_id
-        if sep_id is None:
-            raise ValueError("Tokenizer must define sep/eos/cls token for cross-modal separator.")
+    def _resolve_special_token_id(self, token_type):
+        if token_type == "cls":
+            for token_id in [self.tokenizer.cls_token_id, self.tokenizer.bos_token_id, self.tokenizer.eos_token_id]:
+                if token_id is not None:
+                    return token_id
+            raise ValueError("Tokenizer must define cls/bos/eos token for text CLS position.")
 
-        sep_tokens = torch.full((batch_size, 1), sep_id, dtype=torch.long, device=device)
-        sep_embedding = self.plm.get_input_embeddings()(sep_tokens)
-        return self.sep_projection(sep_embedding)
+        for token_id in [self.tokenizer.sep_token_id, self.tokenizer.eos_token_id, self.tokenizer.cls_token_id]:
+            if token_id is not None:
+                return token_id
+        raise ValueError("Tokenizer must define sep/eos/cls token for cross-modal separator.")
+
+    def _get_special_embedding(self, batch_size, device, token_type):
+        token_id = self._resolve_special_token_id(token_type)
+        special_tokens = torch.full((batch_size, 1), token_id, dtype=torch.long, device=device)
+        special_embedding = self.plm.get_input_embeddings()(special_tokens)
+        if token_type == "sep":
+            return self.sep_projection(special_embedding)
+        return special_embedding
 
     def _tokenize_texts(self, texts, device):
         tokens = self.tokenizer(
             texts,
+            add_special_tokens=False,
             padding=True,
             truncation=True,
             max_length=self.max_text_length,
@@ -177,19 +200,24 @@ class CrossModalFusionDiVeQPLM(nn.Module):
         tokens = self._tokenize_texts(texts, device)
         text_embeddings = self.plm.get_input_embeddings()(tokens["input_ids"])
 
+        cls_embedding = self._get_special_embedding(batch_size, device, "cls")
         struct_token = self.struct_token_projection(zq).unsqueeze(1)
-        sep_embedding = self._get_sep_embedding(batch_size, device)
+        sep_embedding = self._get_special_embedding(batch_size, device, "sep")
 
-        fused_embeddings = torch.cat([struct_token, sep_embedding, text_embeddings], dim=1)
+        fused_embeddings = torch.cat([cls_embedding, struct_token, sep_embedding, text_embeddings], dim=1)
+        cls_mask = torch.ones((batch_size, 1), dtype=tokens["attention_mask"].dtype, device=device)
         struct_mask = torch.ones((batch_size, 1), dtype=tokens["attention_mask"].dtype, device=device)
         sep_mask = torch.ones((batch_size, 1), dtype=tokens["attention_mask"].dtype, device=device)
-        attention_mask = torch.cat([struct_mask, sep_mask, tokens["attention_mask"]], dim=1)
+        attention_mask = torch.cat([cls_mask, struct_mask, sep_mask, tokens["attention_mask"]], dim=1)
 
         outputs = self.plm(inputs_embeds=fused_embeddings, attention_mask=attention_mask)
-        pooled = outputs.last_hidden_state[:, 0, :]
-        logits = self.classifier(pooled)
+        text_cls = outputs.last_hidden_state[:, 0, :]
+        struct_repr = outputs.last_hidden_state[:, 1, :]
+        fused_repr = self.fusion_projection(torch.cat([text_cls, struct_repr], dim=-1))
+        logits = self.classifier(fused_repr)
 
         if self.debug_shapes and not self.shape_debug_printed:
+            print(f"Text CLS shape: {tuple(text_cls.shape)}")
             print(f"DiVeQ struct token shape: {tuple(struct_token.shape)}")
             print(f"Text token embedding shape: {tuple(text_embeddings.shape)}")
             print(f"Fused embedding shape: {tuple(fused_embeddings.shape)}")
@@ -199,16 +227,23 @@ class CrossModalFusionDiVeQPLM(nn.Module):
         vq_aux_logits = None
         if self.vq_aux_classifier is not None:
             vq_aux_logits = self.vq_aux_classifier(zq)
+        text_aux_logits = None
+        if self.text_aux_classifier is not None:
+            text_aux_logits = self.text_aux_classifier(text_cls)
 
         return {
             "logits": logits,
             "attention_mask": attention_mask,
             "fused_embeddings": fused_embeddings,
+            "text_cls": text_cls,
+            "struct_repr": struct_repr,
+            "fused_repr": fused_repr,
             "ze": ze,
             "zq": zq,
             "code_indices": code_indices,
             "quantized_stack": graph_outputs["quantized_stack"][:batch_size],
             "vq_aux_logits": vq_aux_logits,
+            "text_aux_logits": text_aux_logits,
             "quantization_loss": graph_outputs["quantization_loss"],
             "commitment_loss": graph_outputs["commitment_loss"],
             "codebook_loss": graph_outputs["codebook_loss"],

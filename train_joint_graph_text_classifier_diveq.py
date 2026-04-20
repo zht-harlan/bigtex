@@ -53,17 +53,21 @@ def get_seed_texts(refined_texts, batch):
     return [refined_texts[node_id] for node_id in seed_ids]
 
 
-def compute_total_loss(outputs, seed_labels, vq_aux_weight):
+def compute_total_loss(outputs, seed_labels, vq_aux_weight, text_aux_weight):
     task_loss = F.cross_entropy(outputs["logits"], seed_labels)
     aux_loss = task_loss.new_tensor(0.0)
+    text_loss = task_loss.new_tensor(0.0)
     total_loss = task_loss
     if vq_aux_weight > 0.0 and outputs["vq_aux_logits"] is not None:
         aux_loss = F.cross_entropy(outputs["vq_aux_logits"], seed_labels)
         total_loss = task_loss + vq_aux_weight * aux_loss
-    return total_loss, task_loss.detach(), aux_loss.detach()
+    if text_aux_weight > 0.0 and outputs["text_aux_logits"] is not None:
+        text_loss = F.cross_entropy(outputs["text_aux_logits"], seed_labels)
+        total_loss = total_loss + text_aux_weight * text_loss
+    return total_loss, task_loss.detach(), aux_loss.detach(), text_loss.detach()
 
 
-def evaluate(model, loader, refined_texts, device, split_name, vq_aux_weight):
+def evaluate(model, loader, refined_texts, device, split_name, vq_aux_weight, text_aux_weight):
     model.eval()
     total_loss = 0.0
     y_true_all = []
@@ -76,7 +80,7 @@ def evaluate(model, loader, refined_texts, device, split_name, vq_aux_weight):
             outputs = model(batch.x, batch.edge_index, seed_texts, batch_size=batch.batch_size)
             seed_labels = batch.y[: batch.batch_size].view(-1).long()
 
-            loss, _, _ = compute_total_loss(outputs, seed_labels, vq_aux_weight)
+            loss, _, _, _ = compute_total_loss(outputs, seed_labels, vq_aux_weight, text_aux_weight)
             total_loss += loss.item()
             y_true_all.append(seed_labels.cpu())
             y_pred_all.append(outputs["logits"].argmax(dim=-1).cpu())
@@ -99,6 +103,7 @@ def train_one_run(
     lr,
     weight_decay,
     vq_aux_weight,
+    text_aux_weight,
 ):
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     best_val_acc = float("-inf")
@@ -110,6 +115,7 @@ def train_one_run(
         total_loss = 0.0
         total_task_loss = 0.0
         total_aux_loss = 0.0
+        total_text_aux_loss = 0.0
         train_true = []
         train_pred = []
         first_batch_logged = False
@@ -122,13 +128,16 @@ def train_one_run(
             outputs = model(batch.x, batch.edge_index, seed_texts, batch_size=batch.batch_size)
             seed_labels = batch.y[: batch.batch_size].view(-1).long()
 
-            loss, task_loss, aux_loss = compute_total_loss(outputs, seed_labels, vq_aux_weight)
+            loss, task_loss, aux_loss, text_loss = compute_total_loss(
+                outputs, seed_labels, vq_aux_weight, text_aux_weight
+            )
             loss.backward()
             optimizer.step()
 
             total_loss += loss.item()
             total_task_loss += task_loss.item()
             total_aux_loss += aux_loss.item()
+            total_text_aux_loss += text_loss.item()
             train_true.append(seed_labels.detach().cpu())
             train_pred.append(outputs["logits"].argmax(dim=-1).detach().cpu())
 
@@ -149,13 +158,15 @@ def train_one_run(
         train_loss = total_loss / max(len(train_loader), 1)
         train_task_loss = total_task_loss / max(len(train_loader), 1)
         train_aux_loss = total_aux_loss / max(len(train_loader), 1)
+        train_text_aux_loss = total_text_aux_loss / max(len(train_loader), 1)
 
-        val_metrics = evaluate(model, valid_loader, refined_texts, device, "val", vq_aux_weight)
-        test_metrics = evaluate(model, test_loader, refined_texts, device, "test", vq_aux_weight)
+        val_metrics = evaluate(model, valid_loader, refined_texts, device, "val", vq_aux_weight, text_aux_weight)
+        test_metrics = evaluate(model, test_loader, refined_texts, device, "test", vq_aux_weight, text_aux_weight)
 
         print(
             f"Epoch {epoch + 1}: "
             f"train_loss={train_loss:.4f}, train_task={train_task_loss:.4f}, train_vq_aux={train_aux_loss:.4f}, "
+            f"train_text_aux={train_text_aux_loss:.4f}, "
             f"train_acc={train_acc:.4f}, train_f1={train_f1:.4f}, "
             f"val_loss={val_metrics['loss']:.4f}, val_acc={val_metrics['acc']:.4f}, val_f1={val_metrics['f1_macro']:.4f}, "
             f"test_acc={test_metrics['acc']:.4f}, test_f1={test_metrics['f1_macro']:.4f}"
@@ -168,6 +179,7 @@ def train_one_run(
                 "train_loss": train_loss,
                 "train_task_loss": train_task_loss,
                 "train_vq_aux_loss": train_aux_loss,
+                "train_text_aux_loss": train_text_aux_loss,
                 "train_acc": train_acc,
                 "train_f1_macro": train_f1,
                 "val_loss": val_metrics["loss"],
@@ -261,6 +273,8 @@ def main():
     parser.add_argument("--freeze_plm_embeddings", action="store_true", help="freeze token embedding matrix")
     parser.add_argument("--enable_vq_aux_head", action="store_true", help="enable lightweight auxiliary head on DiVeQ token")
     parser.add_argument("--vq_aux_weight", default=0.0, type=float, help="auxiliary supervision weight on DiVeQ token")
+    parser.add_argument("--enable_text_aux_head", action="store_true", help="enable lightweight auxiliary head on text CLS")
+    parser.add_argument("--text_aux_weight", default=0.0, type=float, help="auxiliary supervision weight on text CLS")
     parser.add_argument("--node_codes_path", default="outputs/diveq_node_codes.csv", help="csv export path for test node codes")
     args = parser.parse_args()
 
@@ -300,7 +314,8 @@ def main():
     print(
         "DiVeQ joint training config: "
         f"backbone={args.backbone_name}, codebook_size={args.codebook_size}, "
-        f"enable_vq_aux_head={args.enable_vq_aux_head}, vq_aux_weight={args.vq_aux_weight}"
+        f"enable_vq_aux_head={args.enable_vq_aux_head}, vq_aux_weight={args.vq_aux_weight}, "
+        f"enable_text_aux_head={args.enable_text_aux_head}, text_aux_weight={args.text_aux_weight}"
     )
 
     run_results = []
@@ -334,6 +349,7 @@ def main():
             lora_dropout=args.lora_dropout,
             freeze_plm_embeddings=args.freeze_plm_embeddings,
             enable_vq_aux_head=args.enable_vq_aux_head,
+            enable_text_aux_head=args.enable_text_aux_head,
             debug_shapes=True,
         ).to(device)
 
@@ -348,6 +364,7 @@ def main():
             lr=args.lr,
             weight_decay=args.weight_decay,
             vq_aux_weight=args.vq_aux_weight,
+            text_aux_weight=args.text_aux_weight,
         )
         metrics.update(
             {
@@ -362,6 +379,8 @@ def main():
                 "backbone_name": args.backbone_name,
                 "enable_vq_aux_head": args.enable_vq_aux_head,
                 "vq_aux_weight": args.vq_aux_weight,
+                "enable_text_aux_head": args.enable_text_aux_head,
+                "text_aux_weight": args.text_aux_weight,
             }
         )
         run_results.append(metrics)
@@ -415,6 +434,7 @@ def main():
             lora_dropout=args.lora_dropout,
             freeze_plm_embeddings=args.freeze_plm_embeddings,
             enable_vq_aux_head=args.enable_vq_aux_head,
+            enable_text_aux_head=args.enable_text_aux_head,
             debug_shapes=False,
         ).to(device)
         best_model.load_state_dict(best_model_state)
