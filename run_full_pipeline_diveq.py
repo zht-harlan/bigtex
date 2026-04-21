@@ -105,9 +105,6 @@ def build_joint_training_cmd(args, dataset_name):
         cmd.append("--freeze_plm_embeddings")
     if args.enable_vq_aux_head:
         cmd.append("--enable_vq_aux_head")
-    if args.enable_text_aux_head:
-        cmd.append("--enable_text_aux_head")
-        cmd.extend(["--text_aux_weight", str(args.text_aux_weight)])
     return cmd
 
 
@@ -157,8 +154,6 @@ def main():
     parser.add_argument("--freeze_plm_embeddings", action="store_true", help="freeze token embedding matrix")
     parser.add_argument("--enable_vq_aux_head", action="store_true", help="enable lightweight auxiliary head")
     parser.add_argument("--vq_aux_weight", default=0.0, type=float, help="auxiliary supervision weight")
-    parser.add_argument("--enable_text_aux_head", action="store_true", help="enable lightweight text CLS auxiliary head")
-    parser.add_argument("--text_aux_weight", default=0.0, type=float, help="text CLS auxiliary supervision weight")
 
     args = parser.parse_args()
     dataset_name = normalize_dataset_name(args.dataset_name)
