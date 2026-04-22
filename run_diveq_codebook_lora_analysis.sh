@@ -52,7 +52,7 @@ for ds in "${datasets[@]}"; do
     python run_full_pipeline_diveq.py "$ds" \
       --data_root "$DATA_ROOT" \
       --artifact_root "$ARTIFACT_ROOT" \
-      --results_dir "${RESULTS_ROOT}/codebook" \
+      --results_dir "${RESULTS_ROOT}/codebook/codebook_${codebook_size}" \
       --purifier_mode "$PURIFIER_MODE" \
       --backbone_name "$BACKBONE_NAME" \
       --pooling cls \
@@ -81,7 +81,7 @@ for ds in "${datasets[@]}"; do
     python run_full_pipeline_diveq.py "$ds" \
       --data_root "$DATA_ROOT" \
       --artifact_root "$ARTIFACT_ROOT" \
-      --results_dir "${RESULTS_ROOT}/lora" \
+      --results_dir "${RESULTS_ROOT}/lora/lora_r_${lora_r}" \
       --purifier_mode "$PURIFIER_MODE" \
       --backbone_name "$BACKBONE_NAME" \
       --pooling cls \
