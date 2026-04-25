@@ -80,3 +80,6 @@ for ds in "${datasets[@]}"; do
     done
   done
 done
+
+python merge_analysis_summaries.py "$RESULTS_ROOT" \
+  --output "${RESULTS_ROOT}/merged_summary.csv"
