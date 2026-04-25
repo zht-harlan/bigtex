@@ -19,7 +19,6 @@ WEIGHT_DECAY="${WEIGHT_DECAY:-5e-4}"
 RUNS="${RUNS:-3}"
 SEED_BASE="${SEED_BASE:-42}"
 VQ_AUX_WEIGHT="${VQ_AUX_WEIGHT:-0.1}"
-TEXT_AUX_WEIGHT="${TEXT_AUX_WEIGHT:-0.1}"
 
 source "$(conda info --base)/etc/profile.d/conda.sh"
 conda activate "$ENV_NAME"
@@ -71,8 +70,6 @@ for ds in "${datasets[@]}"; do
       --lora_dropout 0.1 \
       --enable_vq_aux_head \
       --vq_aux_weight "$VQ_AUX_WEIGHT" \
-      --enable_text_aux_head \
-      --text_aux_weight "$TEXT_AUX_WEIGHT" \
       --runs "$RUNS"
   done
 
@@ -100,8 +97,6 @@ for ds in "${datasets[@]}"; do
       --lora_dropout 0.1 \
       --enable_vq_aux_head \
       --vq_aux_weight "$VQ_AUX_WEIGHT" \
-      --enable_text_aux_head \
-      --text_aux_weight "$TEXT_AUX_WEIGHT" \
       --runs "$RUNS"
   done
 done
