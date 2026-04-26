@@ -86,6 +86,7 @@ def build_joint_training_cmd(args, dataset_name):
         args.backbone_name,
         "--max_text_length",
         str(args.max_text_length),
+        "--disable_codebook" if args.disable_codebook else "",
         "--lora_r",
         str(args.lora_r),
         "--lora_alpha",
@@ -97,6 +98,7 @@ def build_joint_training_cmd(args, dataset_name):
         "--node_codes_path",
         node_codes_path,
     ]
+    cmd = [part for part in cmd if part]
     if args.quantizer_dim > 0:
         cmd.extend(["--quantizer_dim", str(args.quantizer_dim)])
     if args.disable_lora:
@@ -147,6 +149,7 @@ def main():
     parser.add_argument("--codebook_size", default=128, type=int, help="DiVeQ codebook size")
     parser.add_argument("--quantizer_dim", default=0, type=int, help="quantizer dim, 0 means hidden_dim")
     parser.add_argument("--max_text_length", default=256, type=int, help="joint refined text max length")
+    parser.add_argument("--disable_codebook", action="store_true", help="bypass DiVeQ and use GNN embedding as soft prompt")
     parser.add_argument("--disable_lora", action="store_true", help="disable LoRA in joint stage")
     parser.add_argument("--lora_r", default=8, type=int, help="LoRA rank")
     parser.add_argument("--lora_alpha", default=32, type=int, help="LoRA alpha")

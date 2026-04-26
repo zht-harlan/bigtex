@@ -56,6 +56,19 @@ def build_merged_rows(summary_files, results_root):
         if lora_r is not None:
             record["sweep_lora_r"] = lora_r
 
+        if "/ablation/no_codebook_no_lora/" in normalized_path:
+            record["sweep_use_codebook"] = False
+            record["sweep_use_lora"] = False
+        elif "/ablation/no_codebook/" in normalized_path:
+            record["sweep_use_codebook"] = False
+        elif "/ablation/with_codebook/" in normalized_path:
+            record["sweep_use_codebook"] = True
+
+        if "/ablation/no_lora/" in normalized_path:
+            record["sweep_use_lora"] = False
+        elif "/ablation/with_lora/" in normalized_path:
+            record["sweep_use_lora"] = True
+
         lr_value = infer_value_from_path(normalized_path, r"/lr_([0-9pmem]+)__aux_", str)
         if lr_value is not None:
             lr_text = lr_value.replace("p", ".").replace("m", "-")
@@ -89,7 +102,7 @@ def main():
         raise RuntimeError(f"No non-empty summary CSV files found under: {args.results_root}")
 
     merged_df = pd.DataFrame(merged_rows)
-    sort_columns = [col for col in ["analysis_group", "dataset", "sweep_codebook_size", "sweep_lora_r", "sweep_lr", "sweep_vq_aux_weight"] if col in merged_df.columns]
+    sort_columns = [col for col in ["analysis_group", "dataset", "sweep_use_codebook", "sweep_use_lora", "sweep_codebook_size", "sweep_lora_r", "sweep_lr", "sweep_vq_aux_weight"] if col in merged_df.columns]
     if sort_columns:
         merged_df = merged_df.sort_values(sort_columns).reset_index(drop=True)
 

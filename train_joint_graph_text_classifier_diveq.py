@@ -210,6 +210,7 @@ def build_summary(run_results, dataset_name, backbone_name):
 def export_node_codes(model, loader, refined_texts, device, output_csv_path):
     model.eval()
     exported_rows = []
+    export_column = "code" if model.use_codebook else "prompt_id"
 
     with torch.no_grad():
         for batch in tqdm(loader, desc="Exporting DiVeQ node codes [test]"):
@@ -222,7 +223,7 @@ def export_node_codes(model, loader, refined_texts, device, output_csv_path):
             seed_codes = outputs["code_indices"].detach().cpu().view(-1).tolist()
 
             for node_id, label, code in zip(seed_node_ids, seed_labels, seed_codes):
-                exported_rows.append({"node_id": int(node_id), "label": int(label), "code": int(code)})
+                exported_rows.append({"node_id": int(node_id), "label": int(label), export_column: int(code)})
 
     exported_rows.sort(key=lambda row: row["node_id"])
     os.makedirs(os.path.dirname(output_csv_path), exist_ok=True)
@@ -254,6 +255,7 @@ def main():
     parser.add_argument("--quantizer_dim", default=0, type=int, help="internal quantizer dim, 0 means hidden_dim")
     parser.add_argument("--backbone_name", default="scibert", help="unified PLM backbone")
     parser.add_argument("--max_text_length", default=256, type=int, help="max refined text length")
+    parser.add_argument("--disable_codebook", action="store_true", help="bypass DiVeQ and use GNN embedding as soft prompt")
     parser.add_argument("--disable_lora", action="store_true", help="disable LoRA")
     parser.add_argument("--lora_r", default=8, type=int, help="LoRA rank")
     parser.add_argument("--lora_alpha", default=32, type=int, help="LoRA alpha")
@@ -300,6 +302,7 @@ def main():
     print(
         "DiVeQ joint training config: "
         f"backbone={args.backbone_name}, codebook_size={args.codebook_size}, "
+        f"use_codebook={not args.disable_codebook}, "
         f"enable_vq_aux_head={args.enable_vq_aux_head}, vq_aux_weight={args.vq_aux_weight}"
     )
 
@@ -328,6 +331,7 @@ def main():
             quantizer_dim=quantizer_dim,
             backbone_name=args.backbone_name,
             max_text_length=args.max_text_length,
+            use_codebook=not args.disable_codebook,
             use_lora=not args.disable_lora,
             lora_r=args.lora_r,
             lora_alpha=args.lora_alpha,
@@ -360,6 +364,8 @@ def main():
                 "codebook_size": args.codebook_size,
                 "quantizer_dim": quantizer_dim,
                 "backbone_name": args.backbone_name,
+                "use_codebook": not args.disable_codebook,
+                "use_lora": not args.disable_lora,
                 "enable_vq_aux_head": args.enable_vq_aux_head,
                 "vq_aux_weight": args.vq_aux_weight,
             }
@@ -391,6 +397,11 @@ def main():
             "codebook_size": args.codebook_size,
             "quantizer_dim": quantizer_dim,
             "backbone_name": args.backbone_name,
+            "use_codebook": not args.disable_codebook,
+            "use_lora": not args.disable_lora,
+            "lora_r": args.lora_r,
+            "lora_alpha": args.lora_alpha,
+            "lora_dropout": args.lora_dropout,
             "enable_vq_aux_head": args.enable_vq_aux_head,
             "vq_aux_weight": args.vq_aux_weight,
         },
@@ -409,6 +420,7 @@ def main():
             quantizer_dim=quantizer_dim,
             backbone_name=args.backbone_name,
             max_text_length=args.max_text_length,
+            use_codebook=not args.disable_codebook,
             use_lora=not args.disable_lora,
             lora_r=args.lora_r,
             lora_alpha=args.lora_alpha,

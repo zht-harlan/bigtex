@@ -98,7 +98,8 @@ def main():
         quantizer_dim=quantizer_dim,
         backbone_name=checkpoint["backbone_name"],
         max_text_length=256,
-        use_lora=True,
+        use_codebook=checkpoint.get("use_codebook", True),
+        use_lora=checkpoint.get("use_lora", True),
         lora_r=checkpoint.get("lora_r", 8),
         lora_alpha=checkpoint.get("lora_alpha", 32),
         lora_dropout=checkpoint.get("lora_dropout", 0.1),
@@ -131,11 +132,12 @@ def main():
     node_ids = np.concatenate(node_ids, axis=0)
 
     export_csv_path = os.path.join(output_dir, f"{dataset_name}_struct_token_embeddings.csv")
+    code_column = "code" if checkpoint.get("use_codebook", True) else "prompt_id"
     pd.DataFrame(
         {
             "node_id": node_ids,
             "label": labels,
-            "code": codes,
+            code_column: codes,
             "embedding": [",".join(map(str, row.tolist())) for row in struct_embeddings],
         }
     ).to_csv(export_csv_path, index=False)

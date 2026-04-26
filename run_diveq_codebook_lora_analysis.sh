@@ -19,6 +19,10 @@ WEIGHT_DECAY="${WEIGHT_DECAY:-5e-4}"
 RUNS="${RUNS:-3}"
 SEED_BASE="${SEED_BASE:-42}"
 VQ_AUX_WEIGHT="${VQ_AUX_WEIGHT:-0.1}"
+BASE_CODEBOOK_SIZE="${BASE_CODEBOOK_SIZE:-32}"
+BASE_LORA_R="${BASE_LORA_R:-8}"
+BASE_LORA_ALPHA="${BASE_LORA_ALPHA:-32}"
+BASE_LORA_DROPOUT="${BASE_LORA_DROPOUT:-0.1}"
 
 source "$(conda info --base)/etc/profile.d/conda.sh"
 conda activate "$ENV_NAME"
@@ -65,9 +69,9 @@ for ds in "${datasets[@]}"; do
       --lr "$lr" \
       --weight_decay "$WEIGHT_DECAY" \
       --codebook_size "$codebook_size" \
-      --lora_r 8 \
-      --lora_alpha 32 \
-      --lora_dropout 0.1 \
+      --lora_r "$BASE_LORA_R" \
+      --lora_alpha "$BASE_LORA_ALPHA" \
+      --lora_dropout "$BASE_LORA_DROPOUT" \
       --enable_vq_aux_head \
       --vq_aux_weight "$VQ_AUX_WEIGHT" \
       --runs "$RUNS"
@@ -91,10 +95,81 @@ for ds in "${datasets[@]}"; do
       --joint_epochs "$JOINT_EPOCHS" \
       --lr "$lr" \
       --weight_decay "$WEIGHT_DECAY" \
-      --codebook_size 32 \
+      --codebook_size "$BASE_CODEBOOK_SIZE" \
       --lora_r "$lora_r" \
       --lora_alpha "$lora_alpha" \
-      --lora_dropout 0.1 \
+      --lora_dropout "$BASE_LORA_DROPOUT" \
+      --enable_vq_aux_head \
+      --vq_aux_weight "$VQ_AUX_WEIGHT" \
+      --runs "$RUNS"
+  done
+
+  python run_full_pipeline_diveq.py "$ds" \
+      --data_root "$DATA_ROOT" \
+      --artifact_root "$ARTIFACT_ROOT" \
+      --results_dir "${RESULTS_ROOT}/ablation/no_lora" \
+      --purifier_mode "$PURIFIER_MODE" \
+      --backbone_name "$BACKBONE_NAME" \
+      --pooling cls \
+      --text_batch_size "$TEXT_BATCH_SIZE" \
+      --text_max_length "$TEXT_MAX_LENGTH" \
+      --num-layers "$NUM_LAYERS" \
+      --hidden-dim "$HIDDEN_DIM" \
+      --dropout "$DROPOUT" \
+      --joint_batch_size "$JOINT_BATCH_SIZE" \
+      --joint_epochs "$JOINT_EPOCHS" \
+      --lr "$lr" \
+      --weight_decay "$WEIGHT_DECAY" \
+      --codebook_size "$BASE_CODEBOOK_SIZE" \
+      --disable_lora \
+      --enable_vq_aux_head \
+      --vq_aux_weight "$VQ_AUX_WEIGHT" \
+      --runs "$RUNS"
+
+  python run_full_pipeline_diveq.py "$ds" \
+      --data_root "$DATA_ROOT" \
+      --artifact_root "$ARTIFACT_ROOT" \
+      --results_dir "${RESULTS_ROOT}/ablation/no_codebook" \
+      --purifier_mode "$PURIFIER_MODE" \
+      --backbone_name "$BACKBONE_NAME" \
+      --pooling cls \
+      --text_batch_size "$TEXT_BATCH_SIZE" \
+      --text_max_length "$TEXT_MAX_LENGTH" \
+      --num-layers "$NUM_LAYERS" \
+      --hidden-dim "$HIDDEN_DIM" \
+      --dropout "$DROPOUT" \
+      --joint_batch_size "$JOINT_BATCH_SIZE" \
+      --joint_epochs "$JOINT_EPOCHS" \
+      --lr "$lr" \
+      --weight_decay "$WEIGHT_DECAY" \
+      --codebook_size "$BASE_CODEBOOK_SIZE" \
+      --lora_r "$BASE_LORA_R" \
+      --lora_alpha "$BASE_LORA_ALPHA" \
+      --lora_dropout "$BASE_LORA_DROPOUT" \
+      --disable_codebook \
+      --enable_vq_aux_head \
+      --vq_aux_weight "$VQ_AUX_WEIGHT" \
+      --runs "$RUNS"
+
+  python run_full_pipeline_diveq.py "$ds" \
+      --data_root "$DATA_ROOT" \
+      --artifact_root "$ARTIFACT_ROOT" \
+      --results_dir "${RESULTS_ROOT}/ablation/no_codebook_no_lora" \
+      --purifier_mode "$PURIFIER_MODE" \
+      --backbone_name "$BACKBONE_NAME" \
+      --pooling cls \
+      --text_batch_size "$TEXT_BATCH_SIZE" \
+      --text_max_length "$TEXT_MAX_LENGTH" \
+      --num-layers "$NUM_LAYERS" \
+      --hidden-dim "$HIDDEN_DIM" \
+      --dropout "$DROPOUT" \
+      --joint_batch_size "$JOINT_BATCH_SIZE" \
+      --joint_epochs "$JOINT_EPOCHS" \
+      --lr "$lr" \
+      --weight_decay "$WEIGHT_DECAY" \
+      --codebook_size "$BASE_CODEBOOK_SIZE" \
+      --disable_codebook \
+      --disable_lora \
       --enable_vq_aux_head \
       --vq_aux_weight "$VQ_AUX_WEIGHT" \
       --runs "$RUNS"

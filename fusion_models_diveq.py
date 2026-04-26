@@ -19,11 +19,13 @@ class DiVeQGraphEncoder(nn.Module):
         dropout=0.2,
         codebook_size=128,
         quantizer_dim=None,
+        use_codebook=True,
         debug_shapes=True,
     ):
         super().__init__()
         self.debug_shapes = debug_shapes
         self.shape_debug_printed = False
+        self.use_codebook = use_codebook
 
         self.encoder = PurifiedGraphEncoder(
             input_dim=input_dim,
@@ -34,32 +36,52 @@ class DiVeQGraphEncoder(nn.Module):
             dropout=dropout,
             use_residual=True,
         )
-        self.quantizer = SingleLevelDiVeQ(
-            input_dim=hidden_dim,
-            codebook_size=codebook_size,
-            quantizer_dim=quantizer_dim,
-            use_straight_through=True,
-        )
+        self.quantizer = None
+        if use_codebook:
+            self.quantizer = SingleLevelDiVeQ(
+                input_dim=hidden_dim,
+                codebook_size=codebook_size,
+                quantizer_dim=quantizer_dim,
+                use_straight_through=True,
+            )
 
     def forward(self, x, edge_index):
         ze = self.encoder.encode(x, edge_index)
-        quantizer_outputs = self.quantizer(ze)
-        zq = quantizer_outputs["quantized_token"]
+        if self.quantizer is None:
+            zq = ze
+            code_indices = torch.full(
+                (ze.size(0),),
+                -1,
+                dtype=torch.long,
+                device=ze.device,
+            )
+            quantized_stack = zq.unsqueeze(1)
+            quantization_loss = ze.new_tensor(0.0)
+            commitment_loss = ze.new_tensor(0.0)
+            codebook_loss = ze.new_tensor(0.0)
+        else:
+            quantizer_outputs = self.quantizer(ze)
+            zq = quantizer_outputs["quantized_token"]
+            code_indices = quantizer_outputs["indices"]
+            quantized_stack = quantizer_outputs["quantized_stack"]
+            quantization_loss = quantizer_outputs["quantization_loss"]
+            commitment_loss = quantizer_outputs["commitment_loss"]
+            codebook_loss = quantizer_outputs["codebook_loss"]
 
         if self.debug_shapes and not self.shape_debug_printed:
             print(f"DiVeQ Ze shape: {tuple(ze.shape)}")
-            print(f"DiVeQ code indices shape: {tuple(quantizer_outputs['indices'].shape)}")
+            print(f"DiVeQ code indices shape: {tuple(code_indices.shape)}")
             print(f"DiVeQ token shape: {tuple(zq.shape)}")
             self.shape_debug_printed = True
 
         return {
             "ze": ze,
             "zq": zq,
-            "code_indices": quantizer_outputs["indices"],
-            "quantized_stack": quantizer_outputs["quantized_stack"],
-            "quantization_loss": quantizer_outputs["quantization_loss"],
-            "commitment_loss": quantizer_outputs["commitment_loss"],
-            "codebook_loss": quantizer_outputs["codebook_loss"],
+            "code_indices": code_indices,
+            "quantized_stack": quantized_stack,
+            "quantization_loss": quantization_loss,
+            "commitment_loss": commitment_loss,
+            "codebook_loss": codebook_loss,
         }
 
 
@@ -77,6 +99,7 @@ class CrossModalFusionDiVeQPLM(nn.Module):
         backbone_name="scibert",
         max_text_length=256,
         use_lora=True,
+        use_codebook=True,
         lora_r=8,
         lora_alpha=32,
         lora_dropout=0.1,
@@ -88,6 +111,7 @@ class CrossModalFusionDiVeQPLM(nn.Module):
         self.debug_shapes = debug_shapes
         self.shape_debug_printed = False
         self.max_text_length = max_text_length
+        self.use_codebook = use_codebook
 
         resolved_backbone = resolve_backbone_name(backbone_name)
         self.backbone_name = resolved_backbone
@@ -121,6 +145,7 @@ class CrossModalFusionDiVeQPLM(nn.Module):
             dropout=graph_dropout,
             codebook_size=codebook_size,
             quantizer_dim=quantizer_dim,
+            use_codebook=use_codebook,
             debug_shapes=debug_shapes,
         )
 
@@ -177,10 +202,10 @@ class CrossModalFusionDiVeQPLM(nn.Module):
         tokens = self._tokenize_texts(texts, device)
         text_embeddings = self.plm.get_input_embeddings()(tokens["input_ids"])
 
-        struct_token = self.struct_token_projection(zq).unsqueeze(1)
+        struct_prompt = self.struct_token_projection(zq).unsqueeze(1)
         sep_embedding = self._get_sep_embedding(batch_size, device)
 
-        fused_embeddings = torch.cat([struct_token, sep_embedding, text_embeddings], dim=1)
+        fused_embeddings = torch.cat([struct_prompt, sep_embedding, text_embeddings], dim=1)
         struct_mask = torch.ones((batch_size, 1), dtype=tokens["attention_mask"].dtype, device=device)
         sep_mask = torch.ones((batch_size, 1), dtype=tokens["attention_mask"].dtype, device=device)
         attention_mask = torch.cat([struct_mask, sep_mask, tokens["attention_mask"]], dim=1)
@@ -190,7 +215,9 @@ class CrossModalFusionDiVeQPLM(nn.Module):
         logits = self.classifier(pooled)
 
         if self.debug_shapes and not self.shape_debug_printed:
-            print(f"DiVeQ struct token shape: {tuple(struct_token.shape)}")
+            source_name = "codebook token" if self.use_codebook else "GNN soft prompt"
+            print(f"DiVeQ struct token source: {source_name}")
+            print(f"DiVeQ struct token shape: {tuple(struct_prompt.shape)}")
             print(f"Text token embedding shape: {tuple(text_embeddings.shape)}")
             print(f"Fused embedding shape: {tuple(fused_embeddings.shape)}")
             print(f"Attention mask shape: {tuple(attention_mask.shape)}")
